@@ -14,8 +14,10 @@ app.use(morgan("combined"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
-app.use("/api/users", require("./routes/users"));
+// Routes (one file per domain, one dev per file — see README for ownership)
+app.use("/api/users", require("./routes/users"));           // Domain 1: Auth & Profiles
+app.use("/api/mentors", require("./routes/mentors"));       // Domain 2: Discovery & Requests
+app.use("/api/requests", require("./routes/scheduling"));   // Domain 3: Scheduling & Statuses
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {
