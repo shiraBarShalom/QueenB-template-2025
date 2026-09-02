@@ -22,7 +22,7 @@ export default function Layout({ children }) {
               textDecoration: "none",
             }}
           >
-            Match Queens
+            MentorMe
           </Typography>
 
           <Stack direction="row" spacing={1}>
