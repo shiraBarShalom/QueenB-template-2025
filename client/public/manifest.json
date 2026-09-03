@@ -1,6 +1,6 @@
 {
-  "short_name": "QueenB",
-  "name": "QueenB Task Management",
+  "short_name": "MentorMe",
+  "name": "MentorMe",
   "icons": [
     {
       "src": "favicon.ico",
@@ -10,6 +10,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#6366f1",
-  "background_color": "#ffffff"
+  "theme_color": "#e11d6a",
+  "background_color": "#fff1f5"
 }
