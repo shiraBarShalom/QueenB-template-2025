@@ -5,33 +5,75 @@ const { sendSuccess, sendError } = require("../utils/responseHandler");
 
 // Domain 2: Discovery & Requests — owns mentor listing + meeting_requests creation
 
+// Map a DB mentor row → list-card JSON (no email / social links)
+function toMentorListItem(row) {
+  return {
+    userId: row.id,
+    username: row.username,
+    jobTitle: row.job_title,
+    company: row.company,
+    yearsOfExperience: row.years_of_experience,
+    techStack: row.tech_stack,
+    programmingLanguages: row.programming_languages,
+    profilePictureUrl: row.profile_picture_url,
+    background: row.background,
+    adviceTopics: row.advises_on,
+    meetingDurationMins: row.meeting_duration_minutes,
+    maxMeetings: row.max_meetings,
+  };
+}
+
+// Map a DB mentor row → profile JSON (includes email + social links)
+function toMentorProfile(row) {
+  return {
+    ...toMentorListItem(row),
+    email: row.email,
+    githubUrl: row.github_url,
+    linkedinUrl: row.linkedin_url,
+  };
+}
+
+// Map a created meeting_requests row → Part 3 handoff shape
+function toMeetingRequest(row) {
+  return {
+    id: row.id,
+    menteeId: row.mentee_id,
+    mentorId: row.mentor_id,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+const MENTOR_SELECT = `
+  u.id,
+  u.username,
+  u.email,
+  u.programming_languages,
+  u.tech_stack,
+  u.job_title,
+  u.company,
+  u.years_of_experience,
+  u.profile_picture_url,
+  u.github_url,
+  u.linkedin_url,
+  mp.background,
+  mp.advises_on,
+  mp.max_meetings,
+  mp.meeting_duration_minutes
+`;
+
 // GET /api/mentors - list all mentors with their mentoring details
 router.get("/", async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT
-         u.id,
-         u.username,
-         u.email,
-         u.programming_languages,
-         u.tech_stack,
-         u.job_title,
-         u.company,
-         u.years_of_experience,
-         u.profile_picture_url,
-         u.github_url,
-         u.linkedin_url,
-         mp.id AS mentor_profile_id,
-         mp.background,
-         mp.advises_on,
-         mp.max_meetings,
-         mp.meeting_duration_minutes
+      `SELECT ${MENTOR_SELECT}
        FROM users u
        INNER JOIN mentor_profiles mp ON mp.user_id = u.id
        ORDER BY u.username ASC`
     );
 
-    return sendSuccess(res, result.rows, "Mentors retrieved successfully");
+    const mentors = result.rows.map(toMentorListItem);
+    return sendSuccess(res, mentors, "Mentors retrieved successfully");
   } catch (error) {
     console.error("Error fetching mentors:", error);
     return sendError(res, "Failed to retrieve mentors", 500);
@@ -42,23 +84,7 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const result = await db.query(
-      `SELECT
-         u.id,
-         u.username,
-         u.email,
-         u.programming_languages,
-         u.tech_stack,
-         u.job_title,
-         u.company,
-         u.years_of_experience,
-         u.profile_picture_url,
-         u.github_url,
-         u.linkedin_url,
-         mp.id AS mentor_profile_id,
-         mp.background,
-         mp.advises_on,
-         mp.max_meetings,
-         mp.meeting_duration_minutes
+      `SELECT ${MENTOR_SELECT}
        FROM users u
        INNER JOIN mentor_profiles mp ON mp.user_id = u.id
        WHERE u.id = $1`,
@@ -69,7 +95,11 @@ router.get("/:id", async (req, res) => {
       return sendError(res, "Mentor not found", 404);
     }
 
-    return sendSuccess(res, result.rows[0], "Mentor retrieved successfully");
+    return sendSuccess(
+      res,
+      toMentorProfile(result.rows[0]),
+      "Mentor retrieved successfully"
+    );
   } catch (error) {
     console.error("Error fetching mentor:", error);
     return sendError(res, "Failed to retrieve mentor", 500);
@@ -117,15 +147,15 @@ router.post("/:mentorId/requests", async (req, res) => {
     }
 
     const insertResult = await db.query(
-      `INSERT INTO meeting_requests (mentee_id, mentor_id)
-       VALUES ($1, $2)
-       RETURNING id, mentee_id, mentor_id, status, retry_count, created_at, updated_at`,
+      `INSERT INTO meeting_requests (mentee_id, mentor_id, status)
+       VALUES ($1, $2, 'PENDING_MENTOR')
+       RETURNING id, mentee_id, mentor_id, status, created_at`,
       [menteeId, mentorId]
     );
 
     return sendSuccess(
       res,
-      insertResult.rows[0],
+      toMeetingRequest(insertResult.rows[0]),
       "Meeting request created successfully",
       201
     );

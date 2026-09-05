@@ -14,4 +14,4 @@ VALUES
 
 INSERT INTO meeting_requests (mentee_id, mentor_id, status)
 VALUES
-  (4, 2, 'pending');
+  (4, 2, 'PENDING_MENTOR');
