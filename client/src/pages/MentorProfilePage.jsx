@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import axios from "axios";
+import { ThemeProvider } from "@mui/material/styles";
 import {
   Alert,
   Avatar,
@@ -18,10 +19,19 @@ import {
   Typography,
 } from "@mui/material";
 import { colors, fonts, gradients, radii, shadows } from "../theme/tokens";
+import { useLanguage } from "../i18n/LanguageProvider";
+import LanguageSwitcher from "../components/common/LanguageSwitcher";
 
 // Temporary until Part 1 auth provides the logged-in user.
 // Seed mentee: shira@example.com (id 4 after a fresh init + seed).
 const TEMP_MENTEE_ID = 4;
+
+function fill(template, vars) {
+  return Object.entries(vars).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    template
+  );
+}
 
 function DetailRow({ label, children }) {
   if (!children) return null;
@@ -50,9 +60,13 @@ function DetailRow({ label, children }) {
 
 export default function MentorProfilePage() {
   const { id } = useParams();
+  const { dir, t, fonts: langFonts, theme } = useLanguage();
+  const copy = t.mentorProfile;
+
   const [mentor, setMentor] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [errorKey, setErrorKey] = useState("");
+  const [serverError, setServerError] = useState("");
 
   // Persisted open request for this mentee + mentor (null = none / cancelled).
   const [openRequest, setOpenRequest] = useState(null);
@@ -61,8 +75,9 @@ export default function MentorProfilePage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [requestError, setRequestError] = useState("");
-  const [actionMessage, setActionMessage] = useState("");
+  const [statusKey, setStatusKey] = useState("");
+  const [requestErrorKey, setRequestErrorKey] = useState("");
+  const [serverRequestError, setServerRequestError] = useState("");
 
   const hasOpenRequest = Boolean(openRequest);
 
@@ -71,11 +86,13 @@ export default function MentorProfilePage() {
 
     async function loadPage() {
       setLoading(true);
-      setError("");
+      setErrorKey("");
+      setServerError("");
       setMentor(null);
       setOpenRequest(null);
-      setRequestError("");
-      setActionMessage("");
+      setStatusKey("");
+      setRequestErrorKey("");
+      setServerRequestError("");
 
       try {
         const mentorResponse = await axios.get(`/api/mentors/${id}`);
@@ -95,13 +112,13 @@ export default function MentorProfilePage() {
         }
       } catch (err) {
         if (!cancelled) {
-          const status = err.response?.status;
-          setError(
-            status === 404
-              ? "Mentor not found."
-              : err.response?.data?.message ||
-                  "Could not load this mentor. Is the server running?"
-          );
+          if (err.response?.status === 404) {
+            setErrorKey("notFound");
+            setServerError("");
+          } else {
+            setErrorKey("load");
+            setServerError(err.response?.data?.message || "");
+          }
         }
       } finally {
         if (!cancelled) {
@@ -120,27 +137,27 @@ export default function MentorProfilePage() {
     if (!mentor || submitting || hasOpenRequest) return;
 
     setSubmitting(true);
-    setRequestError("");
-    setActionMessage("");
+    setRequestErrorKey("");
+    setServerRequestError("");
+    setStatusKey("");
 
     try {
       const response = await axios.post(`/api/mentors/${mentor.userId}/requests`, {
         menteeId: TEMP_MENTEE_ID,
       });
       setOpenRequest(response.data?.data ?? { id: true });
-      setActionMessage("Request sent. Waiting for mentor response.");
+      setStatusKey("sent");
       setConfirmOpen(false);
     } catch (err) {
       // 409 = backend found an existing open request for this pair
       if (err.response?.status === 409) {
         setOpenRequest(err.response.data?.data ?? { id: true });
-        setRequestError("");
-        setActionMessage("Request already sent. Waiting for mentor response.");
+        setRequestErrorKey("");
+        setServerRequestError("");
+        setStatusKey("alreadySent");
       } else {
-        setRequestError(
-          err.response?.data?.message ||
-            "Could not send the meeting request. Please try again."
-        );
+        setRequestErrorKey("sendFailed");
+        setServerRequestError(err.response?.data?.message || "");
       }
       setConfirmOpen(false);
     } finally {
@@ -152,19 +169,18 @@ export default function MentorProfilePage() {
     if (!openRequest?.id || cancelling) return;
 
     setCancelling(true);
-    setRequestError("");
-    setActionMessage("");
+    setRequestErrorKey("");
+    setServerRequestError("");
+    setStatusKey("");
 
     try {
       await axios.post(`/api/requests/${openRequest.id}/cancel`);
       setOpenRequest(null);
-      setActionMessage("Request cancelled. You can send a new request.");
+      setStatusKey("cancelled");
       setCancelOpen(false);
     } catch (err) {
-      setRequestError(
-        err.response?.data?.message ||
-          "Could not cancel the request. Please try again."
-      );
+      setRequestErrorKey("cancelFailed");
+      setServerRequestError(err.response?.data?.message || "");
       setCancelOpen(false);
     } finally {
       setCancelling(false);
@@ -180,274 +196,313 @@ export default function MentorProfilePage() {
 
   const topics = (mentor?.adviceTopics || "")
     .split(",")
-    .map((t) => t.trim())
+    .map((topic) => topic.trim())
     .filter(Boolean);
 
+  const pageError =
+    serverError ||
+    (errorKey === "notFound"
+      ? copy.notFound
+      : errorKey === "load"
+        ? copy.loadError
+        : "");
+
+  const statusText = statusKey ? copy.status[statusKey] : "";
+  const requestErrorText =
+    serverRequestError ||
+    (requestErrorKey ? copy.errors[requestErrorKey] : "");
+
+  const sendDialogBody = mentor
+    ? fill(copy.confirmSend.bodyWithName, { name: mentor.username })
+    : copy.confirmSend.bodyGeneric;
+
+  const cancelDialogBody = mentor
+    ? fill(copy.confirmCancel.bodyWithName, { name: mentor.username })
+    : copy.confirmCancel.bodyGeneric;
+
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        px: { xs: 2.5, sm: 4 },
-        py: { xs: 4, sm: 5 },
-        background: gradients.page,
-      }}
-    >
-      <Box sx={{ maxWidth: 720, mx: "auto" }}>
-        <Button
-          component={RouterLink}
-          to="/mentors"
-          variant="text"
-          sx={{ mb: 2, px: 0 }}
-        >
-          ← Back to mentors
-        </Button>
-
-        {loading && (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 10 }}>
-            <CircularProgress />
-          </Box>
-        )}
-
-        {!loading && error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-
-        {!loading && !error && mentor && (
-          <Box
-            sx={{
-              p: { xs: 2.5, sm: 3.5 },
-              borderRadius: `${radii.lg}px`,
-              background: colors.overlay,
-              border: `1px solid ${colors.border}`,
-              backdropFilter: "blur(10px)",
-              boxShadow: shadows.medium,
-              animation: "mentorMeFadeUp 600ms ease-out both",
-            }}
+    <ThemeProvider theme={theme}>
+      <Box
+        dir={dir}
+        sx={{
+          "--mq-font-body": langFonts.body,
+          "--mq-font-display": langFonts.display,
+          direction: dir,
+          fontFamily: "var(--mq-font-body)",
+          minHeight: "100vh",
+          px: { xs: 2.5, sm: 4 },
+          py: { xs: 4, sm: 5 },
+          background: gradients.page,
+        }}
+      >
+        <Box sx={{ maxWidth: 720, mx: "auto" }}>
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+            spacing={2}
+            sx={{ mb: 2 }}
           >
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={2.5}
-              alignItems={{ xs: "flex-start", sm: "center" }}
-              sx={{ mb: 3 }}
+            <Button
+              component={RouterLink}
+              to="/mentors"
+              variant="text"
+              sx={{ px: 0 }}
             >
-              <Avatar
-                src={mentor.profilePictureUrl || undefined}
-                alt={mentor.username}
-                sx={{
-                  width: 88,
-                  height: 88,
-                  bgcolor: colors.pink[500],
-                  fontFamily: fonts.display,
-                  fontWeight: 700,
-                  fontSize: "1.75rem",
-                }}
+              {copy.back}
+            </Button>
+            <LanguageSwitcher variant="button" label={t.nav.language} />
+          </Stack>
+
+          {loading && (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 10 }}>
+              <CircularProgress />
+            </Box>
+          )}
+
+          {!loading && pageError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {pageError}
+            </Alert>
+          )}
+
+          {!loading && !pageError && mentor && (
+            <Box
+              sx={{
+                p: { xs: 2.5, sm: 3.5 },
+                borderRadius: `${radii.lg}px`,
+                background: colors.overlay,
+                border: `1px solid ${colors.border}`,
+                backdropFilter: "blur(10px)",
+                boxShadow: shadows.medium,
+                animation: "mentorMeFadeUp 600ms ease-out both",
+              }}
+            >
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                spacing={2.5}
+                alignItems={{ xs: "flex-start", sm: "center" }}
+                sx={{ mb: 3 }}
               >
-                {initials}
-              </Avatar>
-              <Box>
-                <Typography
-                  component="h1"
+                <Avatar
+                  src={mentor.profilePictureUrl || undefined}
+                  alt={mentor.username}
                   sx={{
+                    width: 88,
+                    height: 88,
+                    bgcolor: colors.pink[500],
                     fontFamily: fonts.display,
                     fontWeight: 700,
-                    fontSize: { xs: "2rem", sm: "2.35rem" },
-                    lineHeight: 1.1,
-                    color: colors.pink[700],
-                    letterSpacing: "-0.03em",
+                    fontSize: "1.75rem",
                   }}
                 >
-                  {mentor.username}
-                </Typography>
-                <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-                  {[mentor.jobTitle, mentor.company].filter(Boolean).join(" · ") ||
-                    "Mentor"}
-                </Typography>
-              </Box>
-            </Stack>
-
-            <Stack spacing={2.25} sx={{ mb: 3 }}>
-              <DetailRow label="Background">{mentor.background}</DetailRow>
-              <DetailRow label="Experience">
-                {mentor.yearsOfExperience != null
-                  ? `${mentor.yearsOfExperience} years`
-                  : null}
-              </DetailRow>
-              <DetailRow label="Tech stack">{mentor.techStack}</DetailRow>
-              <DetailRow label="Languages">
-                {mentor.programmingLanguages}
-              </DetailRow>
-              <DetailRow label="Meeting length">
-                {mentor.meetingDurationMins != null
-                  ? `${mentor.meetingDurationMins} minutes`
-                  : null}
-              </DetailRow>
-              <DetailRow label="Email">
-                {mentor.email ? (
-                  <Link href={`mailto:${mentor.email}`}>{mentor.email}</Link>
-                ) : null}
-              </DetailRow>
-              <DetailRow label="GitHub">
-                {mentor.githubUrl ? (
-                  <Link href={mentor.githubUrl} target="_blank" rel="noreferrer">
-                    {mentor.githubUrl}
-                  </Link>
-                ) : null}
-              </DetailRow>
-              <DetailRow label="LinkedIn">
-                {mentor.linkedinUrl ? (
-                  <Link
-                    href={mentor.linkedinUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  {initials}
+                </Avatar>
+                <Box>
+                  <Typography
+                    component="h1"
+                    sx={{
+                      fontFamily: fonts.display,
+                      fontWeight: 700,
+                      fontSize: { xs: "2rem", sm: "2.35rem" },
+                      lineHeight: 1.1,
+                      color: colors.pink[700],
+                      letterSpacing: "-0.03em",
+                    }}
                   >
-                    {mentor.linkedinUrl}
-                  </Link>
-                ) : null}
-              </DetailRow>
-            </Stack>
+                    {mentor.username}
+                  </Typography>
+                  <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                    {[mentor.jobTitle, mentor.company].filter(Boolean).join(" · ") ||
+                      copy.mentorFallback}
+                  </Typography>
+                </Box>
+              </Stack>
 
-            {topics.length > 0 && (
-              <Box sx={{ mb: 3 }}>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    display: "block",
-                    fontWeight: 700,
-                    letterSpacing: "0.04em",
-                    textTransform: "uppercase",
-                    color: colors.text.muted,
-                    mb: 1,
-                  }}
+              <Stack spacing={2.25} sx={{ mb: 3 }}>
+                <DetailRow label={copy.labels.background}>
+                  {mentor.background}
+                </DetailRow>
+                <DetailRow label={copy.labels.experience}>
+                  {mentor.yearsOfExperience != null
+                    ? fill(copy.years, { count: mentor.yearsOfExperience })
+                    : null}
+                </DetailRow>
+                <DetailRow label={copy.labels.techStack}>
+                  {mentor.techStack}
+                </DetailRow>
+                <DetailRow label={copy.labels.languages}>
+                  {mentor.programmingLanguages}
+                </DetailRow>
+                <DetailRow label={copy.labels.meetingLength}>
+                  {mentor.meetingDurationMins != null
+                    ? fill(copy.minutes, { count: mentor.meetingDurationMins })
+                    : null}
+                </DetailRow>
+                <DetailRow label={copy.labels.email}>
+                  {mentor.email ? (
+                    <Link href={`mailto:${mentor.email}`}>{mentor.email}</Link>
+                  ) : null}
+                </DetailRow>
+                <DetailRow label={copy.labels.github}>
+                  {mentor.githubUrl ? (
+                    <Link href={mentor.githubUrl} target="_blank" rel="noreferrer">
+                      {mentor.githubUrl}
+                    </Link>
+                  ) : null}
+                </DetailRow>
+                <DetailRow label={copy.labels.linkedin}>
+                  {mentor.linkedinUrl ? (
+                    <Link
+                      href={mentor.linkedinUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {mentor.linkedinUrl}
+                    </Link>
+                  ) : null}
+                </DetailRow>
+              </Stack>
+
+              {topics.length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: "block",
+                      fontWeight: 700,
+                      letterSpacing: "0.04em",
+                      textTransform: "uppercase",
+                      color: colors.text.muted,
+                      mb: 1,
+                    }}
+                  >
+                    {copy.labels.adviceTopics}
+                  </Typography>
+                  <Stack direction="row" flexWrap="wrap" useFlexGap gap={0.75}>
+                    {topics.map((topic) => (
+                      <Chip key={topic} label={topic} variant="outlined" />
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+
+              {statusText && (
+                <Alert
+                  severity={hasOpenRequest ? "success" : "info"}
+                  sx={{ mb: 2 }}
                 >
-                  Advice topics
-                </Typography>
-                <Stack direction="row" flexWrap="wrap" useFlexGap gap={0.75}>
-                  {topics.map((topic) => (
-                    <Chip key={topic} label={topic} variant="outlined" />
-                  ))}
-                </Stack>
-              </Box>
-            )}
+                  {statusText}
+                </Alert>
+              )}
 
-            {actionMessage && (
-              <Alert
-                severity={hasOpenRequest ? "success" : "info"}
-                sx={{ mb: 2 }}
-              >
-                {actionMessage}
-              </Alert>
-            )}
+              {hasOpenRequest && !statusText && (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  {copy.alreadySentBanner}
+                </Alert>
+              )}
 
-            {hasOpenRequest && !actionMessage && (
-              <Alert severity="success" sx={{ mb: 2 }}>
-                Request already sent. Waiting for mentor response.
-              </Alert>
-            )}
+              {requestErrorText && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {requestErrorText}
+                </Alert>
+              )}
 
-            {requestError && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {requestError}
-              </Alert>
-            )}
-
-            <Stack spacing={1.25}>
-              <Button
-                variant="contained"
-                size="large"
-                fullWidth
-                disabled={submitting || hasOpenRequest}
-                onClick={() => {
-                  setRequestError("");
-                  setConfirmOpen(true);
-                }}
-              >
-                {hasOpenRequest ? "Request already sent" : "Request Meeting"}
-              </Button>
-
-              {hasOpenRequest && (
+              <Stack spacing={1.25}>
                 <Button
-                  variant="outlined"
-                  color="inherit"
+                  variant="contained"
                   size="large"
                   fullWidth
-                  disabled={cancelling}
+                  disabled={submitting || hasOpenRequest}
                   onClick={() => {
-                    setRequestError("");
-                    setCancelOpen(true);
+                    setRequestErrorKey("");
+                    setServerRequestError("");
+                    setConfirmOpen(true);
                   }}
                 >
-                  Cancel Request
+                  {hasOpenRequest
+                    ? copy.requestAlreadySent
+                    : copy.requestMeeting}
                 </Button>
-              )}
-            </Stack>
-          </Box>
-        )}
+
+                {hasOpenRequest && (
+                  <Button
+                    variant="outlined"
+                    color="inherit"
+                    size="large"
+                    fullWidth
+                    disabled={cancelling}
+                    onClick={() => {
+                      setRequestErrorKey("");
+                      setServerRequestError("");
+                      setCancelOpen(true);
+                    }}
+                  >
+                    {copy.cancelRequest}
+                  </Button>
+                )}
+              </Stack>
+            </Box>
+          )}
+        </Box>
+
+        <Dialog
+          open={confirmOpen}
+          onClose={() => (!submitting ? setConfirmOpen(false) : null)}
+        >
+          <DialogTitle>{copy.confirmSend.title}</DialogTitle>
+          <DialogContent>
+            <DialogContentText>{sendDialogBody}</DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => setConfirmOpen(false)}
+              disabled={submitting}
+              variant="text"
+            >
+              {copy.confirmSend.cancel}
+            </Button>
+            <Button
+              onClick={handleConfirmRequest}
+              disabled={submitting}
+              variant="contained"
+              autoFocus
+            >
+              {submitting ? copy.confirmSend.sending : copy.confirmSend.send}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={cancelOpen}
+          onClose={() => (!cancelling ? setCancelOpen(false) : null)}
+        >
+          <DialogTitle>{copy.confirmCancel.title}</DialogTitle>
+          <DialogContent>
+            <DialogContentText>{cancelDialogBody}</DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={() => setCancelOpen(false)}
+              disabled={cancelling}
+              variant="text"
+            >
+              {copy.confirmCancel.keep}
+            </Button>
+            <Button
+              onClick={handleConfirmCancel}
+              disabled={cancelling}
+              variant="contained"
+              color="error"
+              autoFocus
+            >
+              {cancelling
+                ? copy.confirmCancel.cancelling
+                : copy.confirmCancel.confirm}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
-
-      <Dialog
-        open={confirmOpen}
-        onClose={() => (!submitting ? setConfirmOpen(false) : null)}
-      >
-        <DialogTitle>Send meeting request?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {mentor
-              ? `You are about to request a meeting with ${mentor.username}.`
-              : "You are about to request a meeting."}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button
-            onClick={() => setConfirmOpen(false)}
-            disabled={submitting}
-            variant="text"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirmRequest}
-            disabled={submitting}
-            variant="contained"
-            autoFocus
-          >
-            {submitting ? "Sending…" : "Send request"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog
-        open={cancelOpen}
-        onClose={() => (!cancelling ? setCancelOpen(false) : null)}
-      >
-        <DialogTitle>Cancel this request?</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            {mentor
-              ? `This will cancel your meeting request with ${mentor.username}. You can send a new request later.`
-              : "This will cancel your meeting request. You can send a new request later."}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button
-            onClick={() => setCancelOpen(false)}
-            disabled={cancelling}
-            variant="text"
-          >
-            Keep request
-          </Button>
-          <Button
-            onClick={handleConfirmCancel}
-            disabled={cancelling}
-            variant="contained"
-            color="error"
-            autoFocus
-          >
-            {cancelling ? "Cancelling…" : "Cancel request"}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+    </ThemeProvider>
   );
 }

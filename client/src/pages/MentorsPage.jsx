@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import axios from "axios";
+import { ThemeProvider } from "@mui/material/styles";
 import {
   Alert,
   Avatar,
@@ -12,8 +13,17 @@ import {
   Typography,
 } from "@mui/material";
 import { colors, fonts, gradients, radii, shadows } from "../theme/tokens";
+import { useLanguage } from "../i18n/LanguageProvider";
+import LanguageSwitcher from "../components/common/LanguageSwitcher";
 
-function MentorCard({ mentor }) {
+function fill(template, vars) {
+  return Object.entries(vars).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    template
+  );
+}
+
+function MentorCard({ mentor, copy }) {
   const initials = (mentor.username || "?")
     .split(/[\s_]+/)
     .map((part) => part[0])
@@ -23,9 +33,21 @@ function MentorCard({ mentor }) {
 
   const topics = (mentor.adviceTopics || "")
     .split(",")
-    .map((t) => t.trim())
+    .map((topic) => topic.trim())
     .filter(Boolean)
     .slice(0, 3);
+
+  const experienceText =
+    mentor.yearsOfExperience != null
+      ? fill(copy.card.yearsExperience, { count: mentor.yearsOfExperience })
+      : copy.card.experienceUnknown;
+
+  const meetingText =
+    mentor.meetingDurationMins != null
+      ? ` · ${fill(copy.card.meetingMins, {
+          count: mentor.meetingDurationMins,
+        })}`
+      : "";
 
   return (
     <Box
@@ -78,18 +100,14 @@ function MentorCard({ mentor }) {
           </Typography>
           <Typography variant="body2" color="text.secondary" noWrap>
             {[mentor.jobTitle, mentor.company].filter(Boolean).join(" · ") ||
-              "Mentor"}
+              copy.card.mentorFallback}
           </Typography>
         </Box>
       </Stack>
 
       <Typography variant="body2" color="text.secondary">
-        {mentor.yearsOfExperience != null
-          ? `${mentor.yearsOfExperience} years experience`
-          : "Experience not listed"}
-        {mentor.meetingDurationMins != null
-          ? ` · ${mentor.meetingDurationMins} min meetings`
-          : ""}
+        {experienceText}
+        {meetingText}
       </Typography>
 
       {mentor.techStack && (
@@ -114,23 +132,28 @@ function MentorCard({ mentor }) {
         variant="contained"
         fullWidth
       >
-        View Profile
+        {copy.card.viewProfile}
       </Button>
     </Box>
   );
 }
 
 export default function MentorsPage() {
+  const { dir, t, fonts: langFonts, theme } = useLanguage();
+  const copy = t.mentors;
+
   const [mentors, setMentors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [errorKey, setErrorKey] = useState("");
+  const [serverError, setServerError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadMentors() {
       setLoading(true);
-      setError("");
+      setErrorKey("");
+      setServerError("");
 
       try {
         // /api is forwarded to Express by src/setupProxy.js
@@ -141,10 +164,8 @@ export default function MentorsPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err.response?.data?.message ||
-              "Could not load mentors. Is the server running?"
-          );
+          setErrorKey("load");
+          setServerError(err.response?.data?.message || "");
         }
       } finally {
         if (!cancelled) {
@@ -159,75 +180,95 @@ export default function MentorsPage() {
     };
   }, []);
 
+  const errorText = serverError || (errorKey === "load" ? copy.loadError : "");
+
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        px: { xs: 2.5, sm: 4 },
-        py: { xs: 4, sm: 5 },
-        background: gradients.page,
-      }}
-    >
-      <Box sx={{ maxWidth: 1100, mx: "auto" }}>
-        <Typography
-          component="p"
-          sx={{
-            fontFamily: fonts.display,
-            fontWeight: 700,
-            fontSize: { xs: "2rem", sm: "2.5rem" },
-            color: colors.pink[700],
-            letterSpacing: "-0.03em",
-            mb: 0.5,
-          }}
-        >
-          MentorMe
-        </Typography>
-        <Typography
-          component="h1"
-          variant="h5"
-          sx={{ fontWeight: 700, mb: 0.75 }}
-        >
-          Find a mentor
-        </Typography>
-        <Typography color="text.secondary" sx={{ mb: 3.5, maxWidth: 480 }}>
-          Browse mentors in the community and open a profile to request a
-          meeting.
-        </Typography>
-
-        {loading && (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-            <CircularProgress />
-          </Box>
-        )}
-
-        {!loading && error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-
-        {!loading && !error && mentors.length === 0 && (
-          <Alert severity="info">No mentors yet. Check back soon.</Alert>
-        )}
-
-        {!loading && !error && mentors.length > 0 && (
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: {
-                xs: "1fr",
-                sm: "repeat(2, 1fr)",
-                md: "repeat(3, 1fr)",
-              },
-              gap: 2.5,
-            }}
+    <ThemeProvider theme={theme}>
+      <Box
+        dir={dir}
+        sx={{
+          "--mq-font-body": langFonts.body,
+          "--mq-font-display": langFonts.display,
+          direction: dir,
+          fontFamily: "var(--mq-font-body)",
+          minHeight: "100vh",
+          px: { xs: 2.5, sm: 4 },
+          py: { xs: 4, sm: 5 },
+          background: gradients.page,
+        }}
+      >
+        <Box sx={{ maxWidth: 1100, mx: "auto" }}>
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="flex-start"
+            spacing={2}
+            sx={{ mb: 3.5 }}
           >
-            {mentors.map((mentor) => (
-              <MentorCard key={mentor.userId} mentor={mentor} />
-            ))}
-          </Box>
-        )}
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                component="p"
+                sx={{
+                  fontFamily: fonts.display,
+                  fontWeight: 700,
+                  fontSize: { xs: "2rem", sm: "2.5rem" },
+                  color: colors.pink[700],
+                  letterSpacing: "-0.03em",
+                  mb: 0.5,
+                }}
+              >
+                {copy.brand}
+              </Typography>
+              <Typography
+                component="h1"
+                variant="h5"
+                sx={{ fontWeight: 700, mb: 0.75 }}
+              >
+                {copy.title}
+              </Typography>
+              <Typography color="text.secondary" sx={{ maxWidth: 480 }}>
+                {copy.subtitle}
+              </Typography>
+            </Box>
+
+            <LanguageSwitcher variant="button" label={t.nav.language} />
+          </Stack>
+
+          {loading && (
+            <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+              <CircularProgress />
+            </Box>
+          )}
+
+          {!loading && errorText && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {errorText}
+            </Alert>
+          )}
+
+          {!loading && !errorText && mentors.length === 0 && (
+            <Alert severity="info">{copy.empty}</Alert>
+          )}
+
+          {!loading && !errorText && mentors.length > 0 && (
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "1fr",
+                  sm: "repeat(2, 1fr)",
+                  md: "repeat(3, 1fr)",
+                },
+                gap: 2.5,
+              }}
+            >
+              {mentors.map((mentor) => (
+                <MentorCard key={mentor.userId} mentor={mentor} copy={copy} />
+              ))}
+            </Box>
+          )}
+        </Box>
       </Box>
-    </Box>
+    </ThemeProvider>
   );
 }
