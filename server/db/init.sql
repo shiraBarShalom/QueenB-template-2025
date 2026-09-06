@@ -1,5 +1,6 @@
 -- Queens Match schema
 -- Run manually against your local DB, or via a setup script, to (re)create all tables.
+-- Seed data lives in seed.sql (run after this file).
 
 DROP TABLE IF EXISTS proposed_slots CASCADE;
 DROP TABLE IF EXISTS meeting_requests CASCADE;

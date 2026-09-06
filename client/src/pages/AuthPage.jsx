@@ -100,9 +100,9 @@ function AuthPage() {
         px: { xs: 2.5, sm: 4 },
         py: { xs: 4, sm: 6 },
         background: `
-          radial-gradient(ellipse 90% 70% at 10% 15%, rgba(251, 113, 133, 0.55), transparent 55%),
-          radial-gradient(ellipse 80% 60% at 90% 85%, rgba(244, 114, 182, 0.45), transparent 50%),
-          linear-gradient(165deg, #fff0f5 0%, #fce7f3 42%, #fda4af 100%)
+          radial-gradient(ellipse 90% 70% at 10% 15%, rgba(244, 114, 182, 0.22), transparent 55%),
+          radial-gradient(ellipse 80% 60% at 90% 85%, rgba(251, 113, 133, 0.18), transparent 50%),
+          linear-gradient(165deg, #fffdfb 0%, #fff1f5 55%, #fce7f3 100%)
         `,
       }}
     >
@@ -119,37 +119,24 @@ function AuthPage() {
           pointerEvents: "none",
         }}
       />
+      {/* Same soft curly-brace accent used on the public landing page, for a cohesive feel */}
       <Box
         aria-hidden
         sx={{
           position: "absolute",
-          width: { xs: 220, md: 340 },
-          height: { xs: 220, md: 340 },
-          borderRadius: "50%",
-          top: { xs: "-8%", md: "-6%" },
-          right: { xs: "-12%", md: "8%" },
-          background:
-            "radial-gradient(circle, rgba(255,255,255,0.55) 0%, rgba(244,114,182,0.35) 45%, transparent 70%)",
-          animation: "mentorMeSoftPulse 7s ease-in-out infinite",
+          top: { xs: -40, md: -20 },
+          left: { xs: -20, md: 30 },
+          fontFamily: '"Fira Code", monospace',
+          fontSize: { xs: 160, md: 260 },
+          fontWeight: 700,
+          lineHeight: 1,
+          color: "rgba(225, 29, 106, 0.06)",
           pointerEvents: "none",
+          userSelect: "none",
         }}
-      />
-      <Box
-        aria-hidden
-        sx={{
-          position: "absolute",
-          width: { xs: 180, md: 280 },
-          height: { xs: 180, md: 280 },
-          borderRadius: "50%",
-          bottom: { xs: "-6%", md: "4%" },
-          left: { xs: "-10%", md: "6%" },
-          background:
-            "radial-gradient(circle, rgba(255,255,255,0.4) 0%, rgba(225,29,106,0.25) 50%, transparent 72%)",
-          animation: "mentorMeSoftPulse 9s ease-in-out infinite",
-          animationDelay: "1.2s",
-          pointerEvents: "none",
-        }}
-      />
+      >
+        {"{ }"}
+      </Box>
 
       <Box
         sx={{
