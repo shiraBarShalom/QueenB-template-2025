@@ -42,6 +42,20 @@ router.get("/:mentorProfileId/requests", async (req, res) => {
   }
 });
 
+// GET /api/mentors/:mentorProfileId/dashboard — Mentor Area (Part 2) read model:
+// { counts, incomingRequests } for this mentor. Read-only projection; all
+// scheduling transitions stay in schedulingService. Declared before "/:id".
+router.get("/:mentorProfileId/dashboard", async (req, res) => {
+  try {
+    const dashboard = await requestService.getMentorDashboard(
+      req.params.mentorProfileId
+    );
+    return sendSuccess(res, dashboard, "Mentor dashboard fetched");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
 // GET /api/mentors/:id — single mentor profile + relations + request count
 router.get("/:id", async (req, res) => {
   try {

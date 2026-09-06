@@ -18,7 +18,14 @@ export const ROUTES = {
   APP: "/app", // Mentee Home / Mentor Search — main page after login
   APP_PERSONAL_AREA: "/app/personal-area",
   APP_MENTOR_AREA: "/app/mentor-area",
+  // Entry point for Part 3 (mentor proposes 2–3 slots for one request). Only
+  // the route shell exists today; the slot picker itself is Part 3.
+  APP_MENTOR_PROPOSE_SLOTS: "/app/mentor-area/requests/:requestId/propose-slots",
   APP_BECOME_MENTOR: "/app/become-a-mentor",
 };
+
+// Build the concrete propose-slots path for a given request id.
+export const mentorProposeSlotsPath = (requestId) =>
+  `/app/mentor-area/requests/${requestId}/propose-slots`;
 
 export default ROUTES;

@@ -82,6 +82,70 @@ async function listRequestsByMentorProfile(rawProfileId) {
   });
 }
 
+// ----------------------------------------------------------------------------
+// Mentor dashboard — a READ-ONLY projection for the Mentor Area (Part 2).
+// ----------------------------------------------------------------------------
+// No transitions happen here; this only reads and counts existing rows. All
+// status changes still go exclusively through schedulingService.
+//
+// `counts` uses ONLY definitions that follow unambiguously from a single
+// MentoringRequestStatus value:
+//   waitingForResponse      = WAITING_FOR_MENTOR_SLOTS   (the mentor owes a reply)
+//   awaitingMenteeSelection = WAITING_FOR_MENTEE_SELECTION (slots sent, mentee to pick)
+//   scheduledMeetings       = MATCHED  (a Meeting exists; MATCHED is terminal in Part 1)
+//
+// `incomingRequests` is the actionable queue for this Part: exactly the
+// WAITING_FOR_MENTOR_SLOTS requests. Mentee identity is limited to the
+// presentational fields agreed for a request card — NEVER email / phoneNumber.
+const DASHBOARD_MENTEE_SELECT = {
+  id: true,
+  fullName: true,
+  jobTitle: true,
+  workplace: true,
+  yearsOfExperience: true,
+  profileImageUrl: true,
+  technologies: { select: { id: true, name: true }, orderBy: { name: "asc" } },
+};
+
+async function getMentorDashboard(rawProfileId) {
+  const mentorProfileId = parseId(rawProfileId, "mentorProfileId");
+  const profile = await prisma.mentorProfile.findUnique({
+    where: { id: mentorProfileId },
+  });
+  if (!profile) throw new ApiError(`MentorProfile ${mentorProfileId} not found`, 404);
+
+  const [grouped, incomingRequests] = await Promise.all([
+    prisma.mentoringRequest.groupBy({
+      by: ["status"],
+      where: { mentorProfileId },
+      _count: { _all: true },
+    }),
+    prisma.mentoringRequest.findMany({
+      where: { mentorProfileId, status: "WAITING_FOR_MENTOR_SLOTS" },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        status: true,
+        createdAt: true,
+        mentee: { select: DASHBOARD_MENTEE_SELECT },
+      },
+    }),
+  ]);
+
+  const countFor = (status) =>
+    grouped.find((g) => g.status === status)?._count._all ?? 0;
+
+  return {
+    mentorProfileId,
+    counts: {
+      waitingForResponse: countFor("WAITING_FOR_MENTOR_SLOTS"),
+      awaitingMenteeSelection: countFor("WAITING_FOR_MENTEE_SELECTION"),
+      scheduledMeetings: countFor("MATCHED"),
+    },
+    incomingRequests,
+  };
+}
+
 async function rejectRequest(rawId) {
   const id = parseId(rawId);
 
@@ -103,6 +167,7 @@ module.exports = {
   getRequestById,
   listRequestsByMentee,
   listRequestsByMentorProfile,
+  getMentorDashboard,
   rejectRequest,
   INITIAL_STATUS,
   REQUEST_INCLUDE,

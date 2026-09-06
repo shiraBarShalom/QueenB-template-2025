@@ -19,11 +19,11 @@ app.use("/api/users", require("./routes/users"));           // users: create / l
 app.use("/api/mentors", require("./routes/mentors"));       // mentors: onboarding + discovery
 app.use("/api", require("./routes/requests"));              // mentoring requests: /api/requests/* + /api/mentees/:userId/requests
 
-// Scheduling & meetings are the NEXT step. routes/scheduling.js still holds
-// its stubs and is intentionally NOT mounted yet so routes/requests.js can own
-// the /api/requests path. Re-mount it (under its own sub-paths) when Scheduling
-// is implemented.
-// app.use("/api/requests", require("./routes/scheduling"));
+// Scheduling state machine. Mounted AFTER routes/requests.js: its sub-paths
+// (/:requestId/propose-slots, /select-slot, /cannot-attend, /withdraw, /cancel)
+// do not collide with the exact paths requests.js owns (/requests,
+// /requests/:id, /requests/:id/reject), so requests.js falls through to here.
+app.use("/api/requests", require("./routes/scheduling"));   // scheduling: status transitions on a MentoringRequest
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

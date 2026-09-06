@@ -10,6 +10,7 @@ import AppLayout from "./components/app/AppLayout";
 import MenteeHomePage from "./pages/app/MenteeHomePage";
 import PersonalAreaPage from "./pages/app/PersonalAreaPage";
 import MentorAreaPage from "./pages/app/MentorAreaPage";
+import ProposeSlotsPage from "./pages/app/ProposeSlotsPage";
 import BecomeMentorPage from "./pages/app/BecomeMentorPage";
 
 function App() {
@@ -37,6 +38,11 @@ function App() {
               <Route index element={<MenteeHomePage />} />
               <Route path="personal-area" element={<PersonalAreaPage />} />
               <Route path="mentor-area" element={<MentorAreaPage />} />
+              {/* Part 3 lives here next; Part 2 only wires the entry point. */}
+              <Route
+                path="mentor-area/requests/:requestId/propose-slots"
+                element={<ProposeSlotsPage />}
+              />
               <Route path="become-a-mentor" element={<BecomeMentorPage />} />
             </Route>
 

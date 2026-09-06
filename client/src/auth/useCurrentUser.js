@@ -17,9 +17,21 @@
 export const PLACEHOLDER_USER = {
   isAuthenticated: true, // assume "logged in" so the /app shells are viewable
   isMentee: true,
-  isMentor: false, // flip to true to preview the "Mentor area" navbar item
+  isMentor: true, // flip to false to preview the "Become a mentor" navbar item
   isAdmin: false,
   displayName: "משתמשת",
+
+  // TEMPORARY AUTH SCAFFOLDING — not a real session.
+  // `id` is the current users.id. It is what scheduling actions send as
+  // `actingUserId`; the backend state machine validates it against
+  // request.mentorProfile.userId (see server/services/schedulingService.js).
+  // `mentorProfileId` is this user's MentorProfile.id (null when !isMentor) and
+  // is used only to READ the mentor dashboard. The two are different ids — do
+  // not swap them. Point these at a real mentor row in your local DB to preview
+  // the Mentor Area with live data. Real auth replaces all of this inside this
+  // hook; consumers keep reading the same shape.
+  id: 1,
+  mentorProfileId: 1,
 };
 
 export function useCurrentUser() {

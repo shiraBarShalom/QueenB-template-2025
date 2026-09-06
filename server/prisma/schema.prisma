@@ -37,7 +37,7 @@ CANCELLED // process ended without a completed meeting
 // One round of "mentor offers slots -> mentee picks one" within a request.
 enum SchedulingRoundType {
 INITIAL // first set of slots offered for the request
-EXTRA_SLOTS // mentee asked for additional times (allowed once, enforced in backend)
+EXTRA_SLOTS // mentee used CANNOT_ATTEND to ask for another round (allowed twice; retryCount 0..2, enforced in schedulingService)
 RESCHEDULE_BEFORE_MEETING // either side reported the matched time no longer works
 RESCHEDULE_AFTER_NO_SHOW // meeting did not happen and both sides want another try
 }
@@ -185,6 +185,16 @@ mentorProfile MentorProfile @relation(fields: [mentorProfileId], references: [id
 
 status MentoringRequestStatus
 
+// How many times the mentee has used the CANNOT_ATTEND action to ask for
+// another round of proposed slots. Allowed range 0..2, enforced in
+// services/schedulingService.js AND by a DB CHECK constraint
+// (MentoringRequest_retryCount_range, added in migration 20260906170444).
+// ONLY CANNOT_ATTEND ever changes this value; PROPOSE_SLOTS / REJECT /
+// SELECT_SLOT / WITHDRAW / CANCEL leave it untouched. It also doubles as the
+// optimistic-concurrency token for mentee actions: a transition writes
+// conditionally on the (status, retryCount) it observed.
+retryCount Int @default(0)
+
 createdAt DateTime @default(now())
 updatedAt DateTime @updatedAt
 
@@ -201,8 +211,9 @@ notifications Notification[]
 }
 
 // One iteration of "mentor offers times" within a request's lifecycle.
-// How many times each type is allowed to recur (e.g. EXTRA_SLOTS only once)
-// is a backend rule, not enforced by this table.
+// How many times each type is allowed to recur (EXTRA_SLOTS up to twice, i.e.
+// retryCount 0..2) is a backend rule in schedulingService, not enforced by
+// this table.
 model SchedulingRound {
 id Int @id @default(autoincrement())
 
