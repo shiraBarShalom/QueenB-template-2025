@@ -1,189 +1,244 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db");
+
+const prisma = require("../prismaClient");
+const mentorService = require("../services/mentorService");
+const requestService = require("../services/requestService");
 const { sendSuccess, sendError } = require("../utils/responseHandler");
+const { ApiError, handleError } = require("../utils/prismaError");
+const { parseId } = require("../services/userService");
 
-// Domain 2: Discovery & Requests — owns mentor listing + meeting_requests creation
+// Domain 2 + main mentor routes.
+// Part 2 discovery/request APIs keep userId-based URLs for the existing frontend.
+// Data access goes through Prisma (mentorService / requestService / prisma).
 
-// Map a DB mentor row → list-card JSON (no email / social links)
-function toMentorListItem(row) {
+// Map Prisma MentoringRequestStatus → Part 2 MVP status names used by our client.
+function toPart2Status(status) {
+  switch (status) {
+    case "WAITING_FOR_MENTOR_SLOTS":
+      return "PENDING_MENTOR";
+    case "WAITING_FOR_MENTEE_SELECTION":
+      return "PENDING_MENTEE";
+    case "MATCHED":
+    case "ATTENDANCE_CONFIRMED":
+      return "SCHEDULED";
+    case "CANCELLED":
+    case "REJECTED":
+      return "CANCELLED";
+    default:
+      return status;
+  }
+}
+
+// Prisma MentorProfile (+ user/topics/tech) → Part 2 list card (no email/links).
+function toMentorListItem(profile) {
+  const user = profile.user || {};
+  const techNames = (user.technologies || []).map((t) => t.name).filter(Boolean);
+  const topicNames = (profile.mentoringTopics || []).map((t) => t.name).filter(Boolean);
+
   return {
-    userId: row.id,
-    username: row.username,
-    jobTitle: row.job_title,
-    company: row.company,
-    yearsOfExperience: row.years_of_experience,
-    techStack: row.tech_stack,
-    programmingLanguages: row.programming_languages,
-    profilePictureUrl: row.profile_picture_url,
-    background: row.background,
-    adviceTopics: row.advises_on,
-    meetingDurationMins: row.meeting_duration_minutes,
-    maxMeetings: row.max_meetings,
+    userId: user.id ?? profile.userId,
+    mentorProfileId: profile.id,
+    username: user.fullName || null,
+    jobTitle: user.jobTitle || null,
+    company: user.workplace || null,
+    yearsOfExperience: user.yearsOfExperience ?? null,
+    techStack: techNames.length ? techNames.join(", ") : null,
+    programmingLanguages: null,
+    profilePictureUrl: user.profileImageUrl || null,
+    background: profile.background || null,
+    adviceTopics: topicNames.length ? topicNames.join(", ") : null,
+    meetingDurationMins: profile.meetingDurationMinutes ?? null,
+    maxMeetings: profile.meetingCapacity ?? null,
   };
 }
 
-// Map a DB mentor row → profile JSON (includes email + social links)
-function toMentorProfile(row) {
+// List shape + email / social links for the profile page.
+function toMentorProfile(profile) {
+  const user = profile.user || {};
   return {
-    ...toMentorListItem(row),
-    email: row.email,
-    githubUrl: row.github_url,
-    linkedinUrl: row.linkedin_url,
+    ...toMentorListItem(profile),
+    email: user.email || null,
+    githubUrl: user.githubUrl || null,
+    linkedinUrl: user.linkedinUrl || null,
   };
 }
 
-// Map a created meeting_requests row → Part 3 handoff shape
-function toMeetingRequest(row) {
+// Part 3 / frontend handoff shape for a created or existing request.
+function toMeetingRequest(request) {
+  const mentorUserId =
+    request.mentorProfile?.userId ??
+    request.mentorProfile?.user?.id ??
+    null;
+
   return {
-    id: row.id,
-    menteeId: row.mentee_id,
-    mentorId: row.mentor_id,
-    status: row.status,
-    createdAt: row.created_at,
+    id: request.id,
+    menteeId: request.menteeId,
+    mentorId: mentorUserId,
+    mentorProfileId: request.mentorProfileId,
+    status: toPart2Status(request.status),
+    createdAt: request.createdAt,
   };
 }
 
-const MENTOR_SELECT = `
-  u.id,
-  u.username,
-  u.email,
-  u.programming_languages,
-  u.tech_stack,
-  u.job_title,
-  u.company,
-  u.years_of_experience,
-  u.profile_picture_url,
-  u.github_url,
-  u.linkedin_url,
-  mp.background,
-  mp.advises_on,
-  mp.max_meetings,
-  mp.meeting_duration_minutes
-`;
-
-// GET /api/mentors - list all mentors with their mentoring details
-router.get("/", async (req, res) => {
+// POST /api/mentors — an existing user becomes a mentor (from origin/main)
+router.post("/", async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT ${MENTOR_SELECT}
-       FROM users u
-       INNER JOIN mentor_profiles mp ON mp.user_id = u.id
-       ORDER BY u.username ASC`
-    );
-
-    const mentors = result.rows.map(toMentorListItem);
-    return sendSuccess(res, mentors, "Mentors retrieved successfully");
-  } catch (error) {
-    console.error("Error fetching mentors:", error);
-    return sendError(res, "Failed to retrieve mentors", 500);
+    const mentor = await mentorService.createMentor(req.body);
+    return sendSuccess(res, mentor, "Mentor profile created", 201);
+  } catch (err) {
+    return handleError(err, res);
   }
 });
 
-// GET /api/mentors/:id - one mentor with user + mentor_profile details
-router.get("/:id", async (req, res) => {
+// GET /api/mentors — Part 2 list shape for Mentor List UI
+router.get("/", async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT ${MENTOR_SELECT}
-       FROM users u
-       INNER JOIN mentor_profiles mp ON mp.user_id = u.id
-       WHERE u.id = $1`,
-      [req.params.id]
+    const mentors = await mentorService.listMentors();
+    return sendSuccess(
+      res,
+      mentors.map(toMentorListItem),
+      "Mentors retrieved successfully"
     );
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
 
-    if (result.rows.length === 0) {
-      return sendError(res, "Mentor not found", 404);
+// GET /api/mentors/:mentorId/requests/open?menteeId= — open request for this mentee+mentor pair.
+// :mentorId is the mentor's USER id (same convention as POST create).
+// Declared before "/:mentorProfileId/requests" so "open" is not swallowed as an id segment.
+router.get("/:mentorId/requests/open", async (req, res) => {
+  try {
+    const mentorUserId = parseId(req.params.mentorId, "mentorId");
+    const menteeId = parseId(req.query?.menteeId, "menteeId");
+
+    const mentorProfile = await prisma.mentorProfile.findUnique({
+      where: { userId: mentorUserId },
+    });
+    if (!mentorProfile) {
+      throw new ApiError("Mentor not found", 404);
     }
+
+    const mentee = await prisma.user.findUnique({ where: { id: menteeId } });
+    if (!mentee) {
+      throw new ApiError("Mentee not found", 404);
+    }
+
+    const openRequest = await requestService.findOpenRequest(
+      menteeId,
+      mentorProfile.id
+    );
 
     return sendSuccess(
       res,
-      toMentorProfile(result.rows[0]),
-      "Mentor retrieved successfully"
+      openRequest ? toMeetingRequest(openRequest) : null,
+      openRequest ? "Open request found" : "No open request"
     );
-  } catch (error) {
-    console.error("Error fetching mentor:", error);
-    return sendError(res, "Failed to retrieve mentor", 500);
+  } catch (err) {
+    return handleError(err, res);
   }
 });
 
-// POST /api/mentors/:mentorId/requests - mentee requests a match with a mentor
-// menteeId comes from the body until Domain 1 auth provides the logged-in user
+// GET /api/mentors/:mentorProfileId/requests — requests received by this mentor (main)
+// Declared before "/:id" and before POST "/:mentorId/requests" param siblings as needed.
+router.get("/:mentorProfileId/requests", async (req, res) => {
+  try {
+    const requests = await requestService.listRequestsByMentorProfile(
+      req.params.mentorProfileId
+    );
+    return sendSuccess(res, requests, "Mentor requests fetched");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
+// POST /api/mentors/:mentorId/requests — Part 2 create request
+// :mentorId is the mentor's USER id (matches frontend /mentors/:userId).
+// menteeId comes from the body until Domain 1 auth provides the logged-in user.
 router.post("/:mentorId/requests", async (req, res) => {
   try {
-    const mentorId = Number(req.params.mentorId);
-    const menteeId = Number(req.body?.menteeId);
+    const mentorUserId = parseId(req.params.mentorId, "mentorId");
+    const menteeId = parseId(req.body?.menteeId, "menteeId");
 
-    if (!Number.isInteger(mentorId) || mentorId <= 0) {
-      return sendError(res, "Invalid mentor id", 400);
+    if (menteeId === mentorUserId) {
+      throw new ApiError("Cannot request a meeting with yourself", 400);
     }
 
-    if (!Number.isInteger(menteeId) || menteeId <= 0) {
-      return sendError(res, "menteeId is required", 400);
+    const mentorProfile = await prisma.mentorProfile.findUnique({
+      where: { userId: mentorUserId },
+      include: { user: { omit: { passwordHash: true } } },
+    });
+    if (!mentorProfile) {
+      throw new ApiError("Mentor not found", 404);
     }
 
-    if (menteeId === mentorId) {
-      return sendError(res, "Cannot request a meeting with yourself", 400);
+    const mentee = await prisma.user.findUnique({ where: { id: menteeId } });
+    if (!mentee) {
+      throw new ApiError("Mentee not found", 404);
     }
 
-    const mentorResult = await db.query(
-      `SELECT u.id
-       FROM users u
-       INNER JOIN mentor_profiles mp ON mp.user_id = u.id
-       WHERE u.id = $1`,
-      [mentorId]
+    // Duplicate open-request prevention (Part 2).
+    const openRequest = await requestService.findOpenRequest(
+      menteeId,
+      mentorProfile.id
     );
 
-    if (mentorResult.rows.length === 0) {
-      return sendError(res, "Mentor not found", 404);
-    }
-
-    const menteeResult = await db.query(
-      `SELECT id FROM users WHERE id = $1`,
-      [menteeId]
-    );
-
-    if (menteeResult.rows.length === 0) {
-      return sendError(res, "Mentee not found", 404);
-    }
-
-    // Block duplicate open requests for the same mentee ↔ mentor pair.
-    // "Open" = not CANCELLED (PENDING_MENTOR / PENDING_MENTEE / SCHEDULED).
-    const openRequest = await db.query(
-      `SELECT id, mentee_id, mentor_id, status, created_at
-       FROM meeting_requests
-       WHERE mentee_id = $1
-         AND mentor_id = $2
-         AND status <> 'CANCELLED'
-       ORDER BY id DESC
-       LIMIT 1`,
-      [menteeId, mentorId]
-    );
-
-    if (openRequest.rows.length > 0) {
+    if (openRequest) {
       return sendError(
         res,
         "Request already sent",
         409,
-        toMeetingRequest(openRequest.rows[0])
+        toMeetingRequest(openRequest)
       );
     }
 
-    const insertResult = await db.query(
-      `INSERT INTO meeting_requests (mentee_id, mentor_id, status)
-       VALUES ($1, $2, 'PENDING_MENTOR')
-       RETURNING id, mentee_id, mentor_id, status, created_at`,
-      [menteeId, mentorId]
-    );
+    // Persists WAITING_FOR_MENTOR_SLOTS (Prisma enum). Mapped to PENDING_MENTOR in the response.
+    const created = await requestService.createRequest({
+      menteeId,
+      mentorProfileId: mentorProfile.id,
+    });
 
     return sendSuccess(
       res,
-      toMeetingRequest(insertResult.rows[0]),
+      toMeetingRequest(created),
       "Meeting request created successfully",
       201
     );
-  } catch (error) {
-    console.error("Error creating meeting request:", error);
-    return sendError(res, "Failed to create meeting request", 500);
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
+// GET /api/mentors/:id — Part 2 profile by USER id (frontend uses /mentors/:userId)
+router.get("/:id", async (req, res) => {
+  try {
+    const userId = parseId(req.params.id);
+    const profile = await prisma.mentorProfile.findUnique({
+      where: { userId },
+      include: {
+        ...mentorService.MENTOR_INCLUDE,
+        _count: { select: { mentoringRequestsReceived: true } },
+      },
+    });
+
+    if (!profile) {
+      throw new ApiError("Mentor not found", 404);
+    }
+
+    return sendSuccess(res, toMentorProfile(profile), "Mentor retrieved successfully");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
+// PATCH /api/mentors/:id — update by MentorProfile id (origin/main)
+router.patch("/:id", async (req, res) => {
+  try {
+    const mentor = await mentorService.updateMentor(req.params.id, req.body);
+    return sendSuccess(res, mentor, "Mentor updated");
+  } catch (err) {
+    return handleError(err, res);
   }
 });
 

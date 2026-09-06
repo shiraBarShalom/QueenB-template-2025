@@ -14,10 +14,16 @@ app.use(morgan("combined"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes (one file per domain, one dev per file — see README for ownership)
-app.use("/api/users", require("./routes/users"));           // Domain 1: Auth & Profiles
-app.use("/api/mentors", require("./routes/mentors"));       // Domain 2: Discovery & Requests
-app.use("/api/requests", require("./routes/scheduling"));   // Domain 3: Scheduling & Statuses
+// Routes (one file per domain)
+app.use("/api/users", require("./routes/users"));           // users: create / list / view / edit
+app.use("/api/mentors", require("./routes/mentors"));       // mentors: onboarding + discovery
+app.use("/api", require("./routes/requests"));              // mentoring requests: /api/requests/* + /api/mentees/:userId/requests
+
+// Scheduling & meetings are the NEXT step. routes/scheduling.js still holds
+// its stubs and is intentionally NOT mounted yet so routes/requests.js can own
+// the /api/requests path. Re-mount it (under its own sub-paths) when Scheduling
+// is implemented.
+// app.use("/api/requests", require("./routes/scheduling"));
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

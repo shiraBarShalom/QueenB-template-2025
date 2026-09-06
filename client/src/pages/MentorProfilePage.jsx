@@ -54,25 +54,44 @@ export default function MentorProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Persisted open request for this mentee + mentor (null = none / cancelled).
+  const [openRequest, setOpenRequest] = useState(null);
+
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [requestError, setRequestError] = useState("");
-  const [requestSuccess, setRequestSuccess] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
+
+  const hasOpenRequest = Boolean(openRequest);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadMentor() {
+    async function loadPage() {
       setLoading(true);
       setError("");
       setMentor(null);
+      setOpenRequest(null);
       setRequestError("");
-      setRequestSuccess(false);
+      setActionMessage("");
 
       try {
-        const response = await axios.get(`/api/mentors/${id}`);
-        if (!cancelled) {
-          setMentor(response.data?.data ?? null);
+        const mentorResponse = await axios.get(`/api/mentors/${id}`);
+        const mentorData = mentorResponse.data?.data ?? null;
+        if (cancelled) return;
+
+        setMentor(mentorData);
+
+        if (mentorData?.userId) {
+          const openResponse = await axios.get(
+            `/api/mentors/${mentorData.userId}/requests/open`,
+            { params: { menteeId: TEMP_MENTEE_ID } }
+          );
+          if (!cancelled) {
+            setOpenRequest(openResponse.data?.data ?? null);
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -91,29 +110,32 @@ export default function MentorProfilePage() {
       }
     }
 
-    loadMentor();
+    loadPage();
     return () => {
       cancelled = true;
     };
   }, [id]);
 
   const handleConfirmRequest = async () => {
-    if (!mentor || submitting || requestSuccess) return;
+    if (!mentor || submitting || hasOpenRequest) return;
 
     setSubmitting(true);
     setRequestError("");
+    setActionMessage("");
 
     try {
-      await axios.post(`/api/mentors/${mentor.userId}/requests`, {
+      const response = await axios.post(`/api/mentors/${mentor.userId}/requests`, {
         menteeId: TEMP_MENTEE_ID,
       });
-      setRequestSuccess(true);
+      setOpenRequest(response.data?.data ?? { id: true });
+      setActionMessage("Request sent. Waiting for mentor response.");
       setConfirmOpen(false);
     } catch (err) {
       // 409 = backend found an existing open request for this pair
       if (err.response?.status === 409) {
-        setRequestSuccess(true);
+        setOpenRequest(err.response.data?.data ?? { id: true });
         setRequestError("");
+        setActionMessage("Request already sent. Waiting for mentor response.");
       } else {
         setRequestError(
           err.response?.data?.message ||
@@ -123,6 +145,29 @@ export default function MentorProfilePage() {
       setConfirmOpen(false);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!openRequest?.id || cancelling) return;
+
+    setCancelling(true);
+    setRequestError("");
+    setActionMessage("");
+
+    try {
+      await axios.post(`/api/requests/${openRequest.id}/cancel`);
+      setOpenRequest(null);
+      setActionMessage("Request cancelled. You can send a new request.");
+      setCancelOpen(false);
+    } catch (err) {
+      setRequestError(
+        err.response?.data?.message ||
+          "Could not cancel the request. Please try again."
+      );
+      setCancelOpen(false);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -286,9 +331,18 @@ export default function MentorProfilePage() {
               </Box>
             )}
 
-            {requestSuccess && (
+            {actionMessage && (
+              <Alert
+                severity={hasOpenRequest ? "success" : "info"}
+                sx={{ mb: 2 }}
+              >
+                {actionMessage}
+              </Alert>
+            )}
+
+            {hasOpenRequest && !actionMessage && (
               <Alert severity="success" sx={{ mb: 2 }}>
-                Request sent. Waiting for mentor response.
+                Request already sent. Waiting for mentor response.
               </Alert>
             )}
 
@@ -298,18 +352,36 @@ export default function MentorProfilePage() {
               </Alert>
             )}
 
-            <Button
-              variant="contained"
-              size="large"
-              fullWidth
-              disabled={submitting || requestSuccess}
-              onClick={() => {
-                setRequestError("");
-                setConfirmOpen(true);
-              }}
-            >
-              {requestSuccess ? "Request already sent" : "Request Meeting"}
-            </Button>
+            <Stack spacing={1.25}>
+              <Button
+                variant="contained"
+                size="large"
+                fullWidth
+                disabled={submitting || hasOpenRequest}
+                onClick={() => {
+                  setRequestError("");
+                  setConfirmOpen(true);
+                }}
+              >
+                {hasOpenRequest ? "Request already sent" : "Request Meeting"}
+              </Button>
+
+              {hasOpenRequest && (
+                <Button
+                  variant="outlined"
+                  color="inherit"
+                  size="large"
+                  fullWidth
+                  disabled={cancelling}
+                  onClick={() => {
+                    setRequestError("");
+                    setCancelOpen(true);
+                  }}
+                >
+                  Cancel Request
+                </Button>
+              )}
+            </Stack>
           </Box>
         )}
       </Box>
@@ -341,6 +413,38 @@ export default function MentorProfilePage() {
             autoFocus
           >
             {submitting ? "Sending…" : "Send request"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={cancelOpen}
+        onClose={() => (!cancelling ? setCancelOpen(false) : null)}
+      >
+        <DialogTitle>Cancel this request?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {mentor
+              ? `This will cancel your meeting request with ${mentor.username}. You can send a new request later.`
+              : "This will cancel your meeting request. You can send a new request later."}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setCancelOpen(false)}
+            disabled={cancelling}
+            variant="text"
+          >
+            Keep request
+          </Button>
+          <Button
+            onClick={handleConfirmCancel}
+            disabled={cancelling}
+            variant="contained"
+            color="error"
+            autoFocus
+          >
+            {cancelling ? "Cancelling…" : "Cancel request"}
           </Button>
         </DialogActions>
       </Dialog>
