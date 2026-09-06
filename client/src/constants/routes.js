@@ -14,11 +14,22 @@ export const ROUTES = {
   HOME: "/",
   LOGIN: "/login",
 
-  // Authenticated area (placeholder shells for now)
-  APP: "/app", // Mentee Home / Mentor Search — main page after login
+  // Authenticated area
+  APP: "/app", // Mentor discovery / mentee home — main page after login
   APP_PERSONAL_AREA: "/app/personal-area",
   APP_MENTOR_AREA: "/app/mentor-area",
   APP_BECOME_MENTOR: "/app/become-a-mentor",
+  /** Mentor profile under the authenticated shell. Use mentorProfilePath(id). */
+  APP_MENTOR_PROFILE: "/app/mentors/:id",
+
+  // Legacy discovery URLs — redirected to APP routes in App.js
+  LEGACY_MENTORS: "/mentors",
+  LEGACY_MENTOR_PROFILE: "/mentors/:id",
 };
+
+/** Build the mentor profile path for a given user id. */
+export function mentorProfilePath(id) {
+  return `/app/mentors/${id}`;
+}
 
 export default ROUTES;

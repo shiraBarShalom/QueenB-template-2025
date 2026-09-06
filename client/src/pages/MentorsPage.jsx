@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import axios from "axios";
-import { ThemeProvider } from "@mui/material/styles";
 import {
   Alert,
   Avatar,
@@ -12,9 +11,9 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
-import { colors, fonts, gradients, radii, shadows } from "../theme/tokens";
+import { colors, fonts, radii, shadows } from "../theme/tokens";
 import { useLanguage } from "../i18n/LanguageProvider";
-import LanguageSwitcher from "../components/common/LanguageSwitcher";
+import { mentorProfilePath } from "../constants/routes";
 
 function fill(template, vars) {
   return Object.entries(vars).reduce(
@@ -128,7 +127,7 @@ function MentorCard({ mentor, copy }) {
 
       <Button
         component={RouterLink}
-        to={`/mentors/${mentor.userId}`}
+        to={mentorProfilePath(mentor.userId)}
         variant="contained"
         fullWidth
       >
@@ -138,8 +137,12 @@ function MentorCard({ mentor, copy }) {
   );
 }
 
+/**
+ * Mentor discovery list — rendered as `/app` inside AppLayout.
+ * Layout/nav/language chrome come from AppLayout + AppNav.
+ */
 export default function MentorsPage() {
-  const { dir, t, fonts: langFonts, theme } = useLanguage();
+  const { t } = useLanguage();
   const copy = t.mentors;
 
   const [mentors, setMentors] = useState([]);
@@ -183,92 +186,62 @@ export default function MentorsPage() {
   const errorText = serverError || (errorKey === "load" ? copy.loadError : "");
 
   return (
-    <ThemeProvider theme={theme}>
-      <Box
-        dir={dir}
-        sx={{
-          "--mq-font-body": langFonts.body,
-          "--mq-font-display": langFonts.display,
-          direction: dir,
-          fontFamily: "var(--mq-font-body)",
-          minHeight: "100vh",
-          px: { xs: 2.5, sm: 4 },
-          py: { xs: 4, sm: 5 },
-          background: gradients.page,
-        }}
-      >
-        <Box sx={{ maxWidth: 1100, mx: "auto" }}>
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="flex-start"
-            spacing={2}
-            sx={{ mb: 3.5 }}
-          >
-            <Box sx={{ minWidth: 0 }}>
-              <Typography
-                component="p"
-                sx={{
-                  fontFamily: fonts.display,
-                  fontWeight: 700,
-                  fontSize: { xs: "2rem", sm: "2.5rem" },
-                  color: colors.pink[700],
-                  letterSpacing: "-0.03em",
-                  mb: 0.5,
-                }}
-              >
-                {copy.brand}
-              </Typography>
-              <Typography
-                component="h1"
-                variant="h5"
-                sx={{ fontWeight: 700, mb: 0.75 }}
-              >
-                {copy.title}
-              </Typography>
-              <Typography color="text.secondary" sx={{ maxWidth: 480 }}>
-                {copy.subtitle}
-              </Typography>
-            </Box>
-
-            <LanguageSwitcher variant="button" label={t.nav.language} />
-          </Stack>
-
-          {loading && (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
-              <CircularProgress />
-            </Box>
-          )}
-
-          {!loading && errorText && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {errorText}
-            </Alert>
-          )}
-
-          {!loading && !errorText && mentors.length === 0 && (
-            <Alert severity="info">{copy.empty}</Alert>
-          )}
-
-          {!loading && !errorText && mentors.length > 0 && (
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "1fr",
-                  sm: "repeat(2, 1fr)",
-                  md: "repeat(3, 1fr)",
-                },
-                gap: 2.5,
-              }}
-            >
-              {mentors.map((mentor) => (
-                <MentorCard key={mentor.userId} mentor={mentor} copy={copy} />
-              ))}
-            </Box>
-          )}
-        </Box>
+    <Box>
+      <Box sx={{ mb: 3.5 }}>
+        <Typography
+          component="p"
+          sx={{
+            fontFamily: fonts.display,
+            fontWeight: 700,
+            fontSize: { xs: "2rem", sm: "2.5rem" },
+            color: colors.pink[700],
+            letterSpacing: "-0.03em",
+            mb: 0.5,
+          }}
+        >
+          {copy.brand}
+        </Typography>
+        <Typography component="h1" variant="h5" sx={{ fontWeight: 700, mb: 0.75 }}>
+          {copy.title}
+        </Typography>
+        <Typography color="text.secondary" sx={{ maxWidth: 480 }}>
+          {copy.subtitle}
+        </Typography>
       </Box>
-    </ThemeProvider>
+
+      {loading && (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+          <CircularProgress />
+        </Box>
+      )}
+
+      {!loading && errorText && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {errorText}
+        </Alert>
+      )}
+
+      {!loading && !errorText && mentors.length === 0 && (
+        <Alert severity="info">{copy.empty}</Alert>
+      )}
+
+      {!loading && !errorText && mentors.length > 0 && (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              md: "repeat(3, 1fr)",
+            },
+            gap: 2.5,
+          }}
+        >
+          {mentors.map((mentor) => (
+            <MentorCard key={mentor.userId} mentor={mentor} copy={copy} />
+          ))}
+        </Box>
+      )}
+    </Box>
   );
 }
