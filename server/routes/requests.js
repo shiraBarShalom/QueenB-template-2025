@@ -39,6 +39,16 @@ router.post("/requests/:id/reject", async (req, res) => {
   }
 });
 
+// POST /api/requests/:id/cancel — mentee cancels; status -> CANCELLED (row kept)
+router.post("/requests/:id/cancel", async (req, res) => {
+  try {
+    const request = await requestService.cancelRequest(req.params.id);
+    return sendSuccess(res, request, "Request cancelled");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
 // GET /api/mentees/:userId/requests — requests this user filed as a mentee
 router.get("/mentees/:userId/requests", async (req, res) => {
   try {

@@ -6,6 +6,7 @@
 // Status is ALWAYS assigned by the backend:
 //   - on creation           -> WAITING_FOR_MENTOR_SLOTS
 //   - on reject              -> REJECTED
+//   - on cancel              -> CANCELLED (row kept)
 // The client cannot pick an initial (or arbitrary) status. Everything past
 // this — offering slots, matching, meetings — is the Scheduling step and is
 // intentionally not implemented here.
@@ -17,8 +18,21 @@ const { parseId } = require("./userService");
 
 const INITIAL_STATUS = "WAITING_FOR_MENTOR_SLOTS";
 
+// Terminal statuses — anything else counts as an "open" request for duplicate
+// checks and for the mentee "already sent / cancel" UI.
+const CLOSED_REQUEST_STATUSES = [
+  "CANCELLED",
+  "REJECTED",
+  "COMPLETED",
+  "FEEDBACK_COMPLETED",
+  "NOT_COMPLETED",
+];
+
 // States from which a reject no longer makes sense.
 const UNREJECTABLE = new Set(["REJECTED", "CANCELLED", "COMPLETED", "FEEDBACK_COMPLETED"]);
+
+// States from which a mentee cancel no longer makes sense.
+const UNCANCELLABLE = new Set(CLOSED_REQUEST_STATUSES);
 
 // mentee + mentor identity (no passwordHash on either side).
 const REQUEST_INCLUDE = {
@@ -27,6 +41,18 @@ const REQUEST_INCLUDE = {
     include: { user: { omit: { passwordHash: true } } },
   },
 };
+
+async function findOpenRequest(menteeId, mentorProfileId) {
+  return prisma.mentoringRequest.findFirst({
+    where: {
+      menteeId,
+      mentorProfileId,
+      status: { notIn: CLOSED_REQUEST_STATUSES },
+    },
+    orderBy: { id: "desc" },
+    include: REQUEST_INCLUDE,
+  });
+}
 
 async function createRequest(body = {}) {
   const menteeId = parseId(body.menteeId, "menteeId");
@@ -98,12 +124,32 @@ async function rejectRequest(rawId) {
   });
 }
 
+// Soft-cancel: keep the row, set MentoringRequestStatus.CANCELLED.
+async function cancelRequest(rawId) {
+  const id = parseId(rawId);
+
+  const existing = await prisma.mentoringRequest.findUnique({ where: { id } });
+  if (!existing) throw new ApiError("Record not found", 404);
+  if (UNCANCELLABLE.has(existing.status)) {
+    throw new ApiError(`Cannot cancel a request in status ${existing.status}`, 409);
+  }
+
+  return prisma.mentoringRequest.update({
+    where: { id },
+    data: { status: "CANCELLED" },
+    include: REQUEST_INCLUDE,
+  });
+}
+
 module.exports = {
   createRequest,
+  findOpenRequest,
   getRequestById,
   listRequestsByMentee,
   listRequestsByMentorProfile,
   rejectRequest,
+  cancelRequest,
   INITIAL_STATUS,
+  CLOSED_REQUEST_STATUSES,
   REQUEST_INCLUDE,
 };

@@ -1,8 +1,9 @@
 /**
- * Landing-page copy, per language.
+ * UI copy, per language.
  *
- * Scope: the PUBLIC landing page only. The auth page keeps its own
- * (English) copy and is not affected by this switcher.
+ * Includes the public landing page and mentor-discovery pages
+ * (`mentors` / `mentorProfile`), plus authenticated app shells under `app`.
+ * The auth page keeps its own (English) copy and is not affected by this switcher.
  *
  * Adding a language later: add its code to LANGUAGES and a matching
  * entry to `translations` with the same shape as the ones below —
@@ -84,6 +85,71 @@ export const translations = {
       tagline: "נוצר עבור QueenB",
     },
 
+    mentors: {
+      brand: "MentorMe",
+      title: "מצאי מנטורית",
+      subtitle: "עייני במנטוריות בקהילה ופתחי פרופיל כדי לבקש פגישה.",
+      loadError: "לא ניתן לטעון מנטוריות. האם השרת פועל?",
+      empty: "עדיין אין מנטוריות. כדאי לחזור בקרוב.",
+      card: {
+        mentorFallback: "מנטורית",
+        yearsExperience: "{count} שנות ניסיון",
+        experienceUnknown: "ניסיון לא צוין",
+        meetingMins: "פגישות של {count} דק׳",
+        viewProfile: "לצפייה בפרופיל",
+      },
+    },
+    mentorProfile: {
+      back: "← חזרה למנטוריות",
+      notFound: "המנטורית לא נמצאה.",
+      loadError: "לא ניתן לטעון את המנטורית. האם השרת פועל?",
+      mentorFallback: "מנטורית",
+      labels: {
+        background: "רקע",
+        experience: "ניסיון",
+        techStack: "סטאק טכנולוגי",
+        languages: "שפות",
+        meetingLength: "משך פגישה",
+        email: "אימייל",
+        github: "GitHub",
+        linkedin: "LinkedIn",
+        adviceTopics: "נושאי ייעוץ",
+      },
+      years: "{count} שנים",
+      minutes: "{count} דקות",
+      requestAlreadySent: "הבקשה כבר נשלחה",
+      requestMeeting: "בקשת פגישה",
+      cancelRequest: "ביטול בקשה",
+      alreadySentBanner: "הבקשה כבר נשלחה. ממתינה לתגובת המנטורית.",
+      status: {
+        sent: "הבקשה נשלחה. ממתינה לתגובת המנטורית.",
+        alreadySent: "הבקשה כבר נשלחה. ממתינה לתגובת המנטורית.",
+        cancelled: "הבקשה בוטלה. אפשר לשלוח בקשה חדשה.",
+      },
+      errors: {
+        sendFailed: "לא ניתן לשלוח את בקשת הפגישה. נסי שוב.",
+        cancelFailed: "לא ניתן לבטל את הבקשה. נסי שוב.",
+        openLoadFailed:
+          "לא ניתן לבדוק את סטטוס הבקשה. הפרופיל נטען, אבל ייתכן שסטטוס הבקשה לא מעודכן.",
+      },
+      confirmSend: {
+        title: "לשלוח בקשת פגישה?",
+        bodyWithName: "את עומדת לבקש פגישה עם {name}.",
+        bodyGeneric: "את עומדת לבקש פגישה.",
+        cancel: "ביטול",
+        send: "שליחת בקשה",
+        sending: "שולחת…",
+      },
+      confirmCancel: {
+        title: "לבטל את הבקשה?",
+        bodyWithName:
+          "פעולה זו תבטל את בקשת הפגישה שלך עם {name}. אפשר לשלוח בקשה חדשה מאוחר יותר.",
+        bodyGeneric: "פעולה זו תבטל את בקשת הפגישה שלך. אפשר לשלוח בקשה חדשה מאוחר יותר.",
+        keep: "להשאיר את הבקשה",
+        confirm: "ביטול בקשה",
+        cancelling: "מבטלת…",
+      },
+    },
     app: {
       nav: {
         menteeHome: "חיפוש מנטוריות",
@@ -215,6 +281,71 @@ export const translations = {
       tagline: "صُممت من أجل QueenB",
     },
 
+    mentors: {
+      brand: "MentorMe",
+      title: "ابحثي عن مرشدة",
+      subtitle: "تصفّحي المرشدات في المجتمع وافتحي ملفًا شخصيًا لطلب لقاء.",
+      loadError: "تعذّر تحميل المرشدات. هل الخادم يعمل؟",
+      empty: "لا توجد مرشدات بعد. عودي قريبًا.",
+      card: {
+        mentorFallback: "مرشدة",
+        yearsExperience: "{count} سنوات خبرة",
+        experienceUnknown: "الخبرة غير مذكورة",
+        meetingMins: "لقاءات لمدة {count} دقيقة",
+        viewProfile: "عرض الملف",
+      },
+    },
+    mentorProfile: {
+      back: "← العودة إلى المرشدات",
+      notFound: "المرشدة غير موجودة.",
+      loadError: "تعذّر تحميل المرشدة. هل الخادم يعمل؟",
+      mentorFallback: "مرشدة",
+      labels: {
+        background: "الخلفية",
+        experience: "الخبرة",
+        techStack: "التقنيات",
+        languages: "اللغات",
+        meetingLength: "مدة اللقاء",
+        email: "البريد الإلكتروني",
+        github: "GitHub",
+        linkedin: "LinkedIn",
+        adviceTopics: "مواضيع الإرشاد",
+      },
+      years: "{count} سنوات",
+      minutes: "{count} دقائق",
+      requestAlreadySent: "تم إرسال الطلب مسبقًا",
+      requestMeeting: "طلب لقاء",
+      cancelRequest: "إلغاء الطلب",
+      alreadySentBanner: "تم إرسال الطلب مسبقًا. في انتظار رد المرشدة.",
+      status: {
+        sent: "تم إرسال الطلب. في انتظار رد المرشدة.",
+        alreadySent: "تم إرسال الطلب مسبقًا. في انتظار رد المرشدة.",
+        cancelled: "تم إلغاء الطلب. يمكنك إرسال طلب جديد.",
+      },
+      errors: {
+        sendFailed: "تعذّر إرسال طلب اللقاء. حاولِ مرة أخرى.",
+        cancelFailed: "تعذّر إلغاء الطلب. حاولِ مرة أخرى.",
+        openLoadFailed:
+          "تعذّر التحقق من حالة الطلب. تم تحميل الملف الشخصي، لكن حالة الطلب قد لا تكون محدّثة.",
+      },
+      confirmSend: {
+        title: "إرسال طلب لقاء؟",
+        bodyWithName: "أنتِ على وشك طلب لقاء مع {name}.",
+        bodyGeneric: "أنتِ على وشك طلب لقاء.",
+        cancel: "إلغاء",
+        send: "إرسال الطلب",
+        sending: "جارٍ الإرسال…",
+      },
+      confirmCancel: {
+        title: "إلغاء هذا الطلب؟",
+        bodyWithName:
+          "سيؤدي هذا إلى إلغاء طلب اللقاء مع {name}. يمكنك إرسال طلب جديد لاحقًا.",
+        bodyGeneric: "سيؤدي هذا إلى إلغاء طلب اللقاء. يمكنك إرسال طلب جديد لاحقًا.",
+        keep: "الإبقاء على الطلب",
+        confirm: "إلغاء الطلب",
+        cancelling: "جارٍ الإلغاء…",
+      },
+    },
     app: {
       nav: {
         menteeHome: "البحث عن مرشدات",
@@ -346,6 +477,72 @@ export const translations = {
       tagline: "Built for QueenB",
     },
 
+    mentors: {
+      brand: "MentorMe",
+      title: "Find a mentor",
+      subtitle: "Browse mentors in the community and open a profile to request a meeting.",
+      loadError: "Could not load mentors. Is the server running?",
+      empty: "No mentors yet. Check back soon.",
+      card: {
+        mentorFallback: "Mentor",
+        yearsExperience: "{count} years experience",
+        experienceUnknown: "Experience not listed",
+        meetingMins: "{count} min meetings",
+        viewProfile: "View Profile",
+      },
+    },
+    mentorProfile: {
+      back: "← Back to mentors",
+      notFound: "Mentor not found.",
+      loadError: "Could not load this mentor. Is the server running?",
+      mentorFallback: "Mentor",
+      labels: {
+        background: "Background",
+        experience: "Experience",
+        techStack: "Tech stack",
+        languages: "Languages",
+        meetingLength: "Meeting length",
+        email: "Email",
+        github: "GitHub",
+        linkedin: "LinkedIn",
+        adviceTopics: "Advice topics",
+      },
+      years: "{count} years",
+      minutes: "{count} minutes",
+      requestAlreadySent: "Request already sent",
+      requestMeeting: "Request Meeting",
+      cancelRequest: "Cancel Request",
+      alreadySentBanner: "Request already sent. Waiting for mentor response.",
+      status: {
+        sent: "Request sent. Waiting for mentor response.",
+        alreadySent: "Request already sent. Waiting for mentor response.",
+        cancelled: "Request cancelled. You can send a new request.",
+      },
+      errors: {
+        sendFailed: "Could not send the meeting request. Please try again.",
+        cancelFailed: "Could not cancel the request. Please try again.",
+        openLoadFailed:
+          "Could not check your request status. The mentor profile loaded, but request status may be out of date.",
+      },
+      confirmSend: {
+        title: "Send meeting request?",
+        bodyWithName: "You are about to request a meeting with {name}.",
+        bodyGeneric: "You are about to request a meeting.",
+        cancel: "Cancel",
+        send: "Send request",
+        sending: "Sending…",
+      },
+      confirmCancel: {
+        title: "Cancel this request?",
+        bodyWithName:
+          "This will cancel your meeting request with {name}. You can send a new request later.",
+        bodyGeneric:
+          "This will cancel your meeting request. You can send a new request later.",
+        keep: "Keep request",
+        confirm: "Cancel request",
+        cancelling: "Cancelling…",
+      },
+    },
     app: {
       nav: {
         menteeHome: "Find a mentor",
