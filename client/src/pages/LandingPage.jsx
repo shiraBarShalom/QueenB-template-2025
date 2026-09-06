@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { ThemeProvider } from "@mui/material/styles";
 import { Box, Button, Container, Stack, Typography } from "@mui/material";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
@@ -8,28 +8,18 @@ import PersonSearchRoundedIcon from "@mui/icons-material/PersonSearchRounded";
 import EventAvailableRoundedIcon from "@mui/icons-material/EventAvailableRounded";
 import Diversity3RoundedIcon from "@mui/icons-material/Diversity3Rounded";
 
-import baseTheme from "../theme";
 import { ROUTES } from "../constants/routes";
-import { translations, LANGUAGES, DEFAULT_LANG } from "../i18n/translations";
+import { useLanguage } from "../i18n/LanguageProvider";
 import MatchQueensLogo from "../components/MatchQueensLogo";
-import LandingNav, { NAV_HEIGHT } from "../components/landing/LandingNav";
+import LandingNav from "../components/landing/LandingNav";
+import { NAV_HEIGHT } from "../components/common/NavShell";
 import HeroArt from "../components/landing/HeroArt";
 import Reveal from "../components/landing/Reveal";
 
 const AUTH_ROUTE = ROUTES.LOGIN;
 
-/*
- * Per-language font stacks, exposed as CSS custom properties on the page
- * wrapper so every nested component (including HeroArt/LandingNav, which
- * don't take font props) picks up the right typeface automatically —
- * adding a language later only means adding a stack here.
- */
-const FONT_STACKS = {
-  he: { body: '"Heebo", "Segoe UI", sans-serif', display: '"Rubik", "Heebo", sans-serif' },
-  ar: { body: '"Cairo", "Heebo", "Segoe UI", sans-serif', display: '"Cairo", "Rubik", sans-serif' },
-  en: { body: '"Heebo", "Segoe UI", sans-serif', display: '"Rubik", "Heebo", sans-serif' },
-};
-
+// The wrapper sets --mq-font-body / --mq-font-display from the shared
+// language state; these consts just point at those CSS variables.
 const HEBREW_FONTS = "var(--mq-font-body)";
 const DISPLAY_FONTS = "var(--mq-font-display)";
 
@@ -132,38 +122,16 @@ function Badge({ children }) {
 
 export default function LandingPage() {
   const year = new Date().getFullYear();
-  const [lang, setLang] = useState(DEFAULT_LANG);
-  const t = translations[lang];
-  const dir = t.dir;
+  // Language / direction / typography come from the shared LanguageProvider,
+  // so the landing page and the authenticated area stay on one language.
+  const { dir, t, fonts, theme } = useLanguage();
   const isRtl = dir === "rtl";
-  const fonts = FONT_STACKS[lang] || FONT_STACKS[DEFAULT_LANG];
   const ArrowIcon = isRtl ? ArrowBackRoundedIcon : ArrowForwardRoundedIcon;
-
-  /* RTL/LTR + per-language typography, layered on top of the shared app theme. */
-  const landingTheme = useMemo(
-    () =>
-      createTheme(baseTheme, {
-        direction: dir,
-        typography: {
-          fontFamily: HEBREW_FONTS,
-          h1: { fontFamily: DISPLAY_FONTS, fontWeight: 800, letterSpacing: "-0.02em" },
-          h2: { fontFamily: DISPLAY_FONTS, fontWeight: 800, letterSpacing: "-0.01em" },
-          h3: { fontFamily: DISPLAY_FONTS, fontWeight: 700 },
-          h4: { fontFamily: DISPLAY_FONTS, fontWeight: 700 },
-          h5: { fontFamily: DISPLAY_FONTS, fontWeight: 700 },
-          h6: { fontFamily: DISPLAY_FONTS, fontWeight: 700 },
-          button: { fontFamily: HEBREW_FONTS, fontWeight: 700 },
-          body1: { fontFamily: HEBREW_FONTS },
-          body2: { fontFamily: HEBREW_FONTS },
-        },
-      }),
-    [dir]
-  );
 
   const steps = t.how.steps.map((s, i) => ({ ...s, icon: STEP_ICONS[i] }));
 
   return (
-    <ThemeProvider theme={landingTheme}>
+    <ThemeProvider theme={theme}>
       <Box
         dir={dir}
         sx={{
@@ -176,16 +144,7 @@ export default function LandingPage() {
           overflowX: "hidden",
         }}
       >
-        <LandingNav
-          authRoute={AUTH_ROUTE}
-          onGoHome={goToTop}
-          onScrollTo={scrollToId}
-          lang={lang}
-          dir={dir}
-          languages={LANGUAGES}
-          onChangeLang={setLang}
-          t={t.nav}
-        />
+        <LandingNav authRoute={AUTH_ROUTE} onGoHome={goToTop} onScrollTo={scrollToId} />
 
         {/* ---------------- HERO ---------------- */}
         <Box

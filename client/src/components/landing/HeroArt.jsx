@@ -23,31 +23,32 @@ const DEFAULT_LABELS = {
   matchedBadge: "מותאמות ✓",
 };
 
-function Node({ label, sx }) {
+function Node({ label, size = 46, sx }) {
+  const big = size >= 54;
   return (
-    <Box sx={{ position: "absolute", textAlign: "center", width: 76, ...sx }}>
+    <Box sx={{ position: "absolute", textAlign: "center", width: size * 2, ...sx }}>
       <Box
         sx={{
-          width: 46,
-          height: 46,
+          width: size,
+          height: size,
           mx: "auto",
           borderRadius: "50%",
           display: "grid",
           placeItems: "center",
           color: "#fff",
           background: "linear-gradient(140deg, #f472b6, #e11d6a)",
-          boxShadow: "0 8px 18px rgba(225,29,106,0.32)",
-          border: "2px solid #fff",
+          boxShadow: "0 0 0 6px rgba(244,114,182,0.15), 0 10px 22px rgba(225,29,106,0.24)",
+          border: "2px solid #fffdfb",
         }}
       >
-        <PersonRoundedIcon fontSize="small" />
+        <PersonRoundedIcon fontSize={big ? "medium" : "small"} />
       </Box>
       <Box
         sx={{
-          mt: 0.5,
+          mt: 0.6,
           fontFamily: "var(--mq-font-body)",
           fontWeight: 700,
-          fontSize: "0.72rem",
+          fontSize: big ? "0.82rem" : "0.72rem",
           color: "#6d3049",
         }}
       >
@@ -168,21 +169,15 @@ export default function HeroArt({ labels = DEFAULT_LABELS }) {
         </Box>
       </Box>
 
-      {/* Front: connection card */}
+      {/* Front: enlarged floating mentee–mentor connection — no card, sits on the hero bg */}
       <Box
         sx={{
           position: "absolute",
-          right: "0%",
-          bottom: "4%",
-          width: 244,
-          height: 196,
-          transform: "rotate(4deg)",
-          borderRadius: 3,
-          backgroundColor: "#ffffff",
-          border: "1px solid rgba(225,29,106,0.18)",
-          boxShadow: "0 30px 70px rgba(159,18,57,0.22)",
-          px: 2,
-          py: 1.75,
+          right: "-2%",
+          bottom: "0%",
+          width: 328,
+          height: 250,
+          transform: "rotate(3deg)",
         }}
       >
         <Box
@@ -190,68 +185,46 @@ export default function HeroArt({ labels = DEFAULT_LABELS }) {
             textAlign: "start",
             fontFamily: "var(--mq-font-body)",
             fontWeight: 700,
-            fontSize: "0.8rem",
-            color: "#9f1239",
+            fontSize: "0.72rem",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "rgba(159,18,57,0.55)",
+            mb: 1,
           }}
         >
           {labels.cardTitle}
         </Box>
 
-        <Box sx={{ position: "relative", height: 118, mt: 0.5 }}>
+        <Box sx={{ position: "relative", width: "100%", height: 210 }}>
           <Box
             component="svg"
-            viewBox="0 0 240 120"
+            viewBox="0 0 328 210"
             preserveAspectRatio="none"
-            sx={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+            sx={{ position: "absolute", inset: 0, width: "100%", height: "100%", overflow: "visible" }}
           >
             <path
-              d="M60 30 C 60 78 180 46 180 96"
+              d="M70 54 C 82 140 250 78 250 106"
               fill="none"
               stroke="#f9a8d4"
-              strokeWidth="3"
+              strokeWidth="3.5"
               strokeLinecap="round"
-              strokeDasharray="2 9"
+              strokeDasharray="2.5 11"
               style={{ animation: "mqDashFlow 1.2s linear infinite" }}
             />
-            <circle cx="120" cy="60" r="5.5" fill="#e11d6a" />
-            <circle cx="120" cy="60" r="11" fill="none" stroke="#f9a8d4" strokeWidth="2" />
+            <circle cx="158" cy="98" r="8" fill="#e11d6a" />
+            <circle cx="158" cy="98" r="15" fill="none" stroke="#f9a8d4" strokeWidth="2.5" />
+            <g
+              style={{
+                offsetPath: 'path("M70 54 C 82 140 250 78 250 106")',
+                animation: "mqTravel 3.4s ease-in-out infinite alternate",
+              }}
+            >
+              <circle cx="0" cy="0" r="6" fill="#e11d6a" />
+            </g>
           </Box>
 
-          <Box
-            sx={{
-              position: "absolute",
-              left: 22,
-              top: 6,
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              backgroundColor: "#e11d6a",
-              offsetPath: 'path("M38 24 C 38 72 158 40 158 90")',
-              animation: "mqTravel 3.4s ease-in-out infinite alternate",
-            }}
-          />
-
-          <Node label={labels.mentee} sx={{ left: 24, top: 0 }} />
-          <Node label={labels.mentor} sx={{ left: 144, top: 66 }} />
-        </Box>
-
-        <Box
-          sx={{
-            mt: 0.5,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 0.5,
-            px: 1,
-            py: 0.4,
-            borderRadius: 999,
-            fontFamily: "var(--mq-font-body)",
-            fontWeight: 700,
-            fontSize: "0.7rem",
-            color: "#9f1239",
-            backgroundColor: "rgba(225,29,106,0.1)",
-          }}
-        >
-          {labels.matchedBadge}
+          <Node label={labels.mentee} size={58} sx={{ left: 12, top: 0 }} />
+          <Node label={labels.mentor} size={58} sx={{ left: 192, top: 96 }} />
         </Box>
       </Box>
     </Box>

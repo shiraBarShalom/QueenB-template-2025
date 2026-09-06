@@ -2,76 +2,33 @@ import React from "react";
 import { Box } from "@mui/material";
 
 /**
- * Original Match Queen mark — inline SVG + CSS, nothing traced or copied
- * from the QueenB logo.
+ * Match Queen logo.
  *
- * Structure is deliberately close to QueenB's own lockup: one wide,
- * simple bracket shape centered above the wordmark — but the bracket
- * here is an original two-stroke shape (not a copy) and the text reads
- * "Match Queen".
+ * Renders the brand image asset directly — it is NOT drawn in code.
+ * The asset must exist at:  client/public/match-queen-logo.png
+ * (transparent PNG). This component only sets a height and lets the
+ * width scale, so the image keeps its own aspect ratio.
  *
  * Props:
- *   - size   the bracket's rendered height in px (the text scales with it)
- *   - tone   "brand" (pink/burgundy on light) | "light" (white, for dark backgrounds)
+ *   - size   base unit; rendered logo height = size * 2.2 px
+ *   - sx     extra styles forwarded to the <img>
  */
-function BracketMark({ size, tone }) {
-  const color = tone === "light" ? "#ffffff" : "#9f1239";
+const LOGO_SRC = "/match-queen-logo.png";
 
+export default function MatchQueensLogo({ size = 26, sx, ...rest }) {
   return (
     <Box
-      component="svg"
-      viewBox="0 0 200 70"
-      aria-hidden="true"
-      sx={{ width: `${size * 2.8}px`, height: "auto", display: "block" }}
-    >
-      <path
-        d="M20 55 C20 22 54 9 92 9"
-        fill="none"
-        stroke={color}
-        strokeWidth="10"
-        strokeLinecap="round"
-      />
-      <path
-        d="M180 55 C180 22 146 9 108 9"
-        fill="none"
-        stroke={color}
-        strokeWidth="10"
-        strokeLinecap="round"
-      />
-    </Box>
-  );
-}
-
-export default function MatchQueensLogo({ size = 26, tone = "brand", sx, ...rest }) {
-  const textColor = tone === "light" ? "#ffffff" : "#4a1528";
-
-  return (
-    <Box
+      component="img"
+      src={LOGO_SRC}
+      alt="Match Queen"
       sx={{
-        display: "inline-flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: `${size * 0.12}px`,
-        userSelect: "none",
-        lineHeight: 1,
+        height: `${size * 2.2}px`,
+        width: "auto",
+        display: "block",
+        objectFit: "contain",
         ...sx,
       }}
       {...rest}
-    >
-      <BracketMark size={size} tone={tone} />
-      <Box
-        component="span"
-        sx={{
-          fontFamily: '"Rubik", "Heebo", sans-serif',
-          fontWeight: 700,
-          fontSize: `${size * 0.58}px`,
-          letterSpacing: "0.01em",
-          color: textColor,
-          whiteSpace: "nowrap",
-        }}
-      >
-        Match Queen
-      </Box>
-    </Box>
+    />
   );
 }
