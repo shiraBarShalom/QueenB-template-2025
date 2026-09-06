@@ -32,6 +32,12 @@ function fill(template, vars) {
   );
 }
 
+/** Same rules as server parseId: positive integer route/user id. */
+function isValidMentorRouteId(raw) {
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0;
+}
+
 function DetailRow({ label, children }) {
   if (!children) return null;
 
@@ -55,6 +61,14 @@ function DetailRow({ label, children }) {
       </Typography>
     </Box>
   );
+}
+
+async function fetchOpenRequest(mentorUserId) {
+  const openResponse = await axios.get(
+    `/api/mentors/${mentorUserId}/requests/open`,
+    { params: { menteeId: TEMP_MENTEE_ID } }
+  );
+  return openResponse.data?.data ?? null;
 }
 
 /**
@@ -98,35 +112,53 @@ export default function MentorProfilePage() {
       setServerRequestError("");
 
       try {
-        const mentorResponse = await axios.get(`/api/mentors/${id}`);
-        const mentorData = mentorResponse.data?.data ?? null;
-        if (cancelled) return;
-
-        setMentor(mentorData);
-
-        if (mentorData?.userId) {
-          const openResponse = await axios.get(
-            `/api/mentors/${mentorData.userId}/requests/open`,
-            { params: { menteeId: TEMP_MENTEE_ID } }
-          );
-          if (!cancelled) {
-            setOpenRequest(openResponse.data?.data ?? null);
-          }
+        // Malformed ids → not-found UI without relying on a blank success body.
+        if (!isValidMentorRouteId(id)) {
+          if (!cancelled) setErrorKey("notFound");
+          return;
         }
-      } catch (err) {
-        if (!cancelled) {
-          if (err.response?.status === 404) {
+
+        let mentorData = null;
+        try {
+          const mentorResponse = await axios.get(`/api/mentors/${id}`);
+          mentorData = mentorResponse.data?.data ?? null;
+          if (cancelled) return;
+
+          // Successful response with null/incomplete payload must not blank the page.
+          if (!mentorData?.userId) {
+            setErrorKey("notFound");
+            setMentor(null);
+            return;
+          }
+
+          setMentor(mentorData);
+        } catch (err) {
+          if (cancelled) return;
+          const status = err.response?.status;
+          // 400 = invalid id from parseId; 404 = mentor missing
+          if (status === 404 || status === 400) {
             setErrorKey("notFound");
             setServerError("");
           } else {
             setErrorKey("load");
             setServerError(err.response?.data?.message || "");
           }
+          return;
+        }
+
+        // Open-request failures must not look like "mentor not found".
+        try {
+          const open = await fetchOpenRequest(mentorData.userId);
+          if (!cancelled) setOpenRequest(open);
+        } catch (err) {
+          if (!cancelled) {
+            setOpenRequest(null);
+            setRequestErrorKey("openLoadFailed");
+            setServerRequestError(err.response?.data?.message || "");
+          }
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     }
 
@@ -182,9 +214,33 @@ export default function MentorProfilePage() {
       setStatusKey("cancelled");
       setCancelOpen(false);
     } catch (err) {
-      setRequestErrorKey("cancelFailed");
-      setServerRequestError(err.response?.data?.message || "");
       setCancelOpen(false);
+
+      // Already closed (409): re-sync from DB so Cancel UI is not left stale.
+      if (err.response?.status === 409 && mentor?.userId) {
+        try {
+          const fresh = await fetchOpenRequest(mentor.userId);
+          setOpenRequest(fresh);
+          if (!fresh) {
+            setStatusKey("cancelled");
+            setRequestErrorKey("");
+            setServerRequestError("");
+          } else {
+            setRequestErrorKey("cancelFailed");
+            setServerRequestError(err.response?.data?.message || "");
+          }
+        } catch (refreshErr) {
+          setRequestErrorKey("cancelFailed");
+          setServerRequestError(
+            refreshErr.response?.data?.message ||
+              err.response?.data?.message ||
+              ""
+          );
+        }
+      } else {
+        setRequestErrorKey("cancelFailed");
+        setServerRequestError(err.response?.data?.message || "");
+      }
     } finally {
       setCancelling(false);
     }

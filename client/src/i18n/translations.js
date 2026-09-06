@@ -129,6 +129,8 @@ export const translations = {
       errors: {
         sendFailed: "לא ניתן לשלוח את בקשת הפגישה. נסי שוב.",
         cancelFailed: "לא ניתן לבטל את הבקשה. נסי שוב.",
+        openLoadFailed:
+          "לא ניתן לבדוק את סטטוס הבקשה. הפרופיל נטען, אבל ייתכן שסטטוס הבקשה לא מעודכן.",
       },
       confirmSend: {
         title: "לשלוח בקשת פגישה?",
@@ -323,6 +325,8 @@ export const translations = {
       errors: {
         sendFailed: "تعذّر إرسال طلب اللقاء. حاولِ مرة أخرى.",
         cancelFailed: "تعذّر إلغاء الطلب. حاولِ مرة أخرى.",
+        openLoadFailed:
+          "تعذّر التحقق من حالة الطلب. تم تحميل الملف الشخصي، لكن حالة الطلب قد لا تكون محدّثة.",
       },
       confirmSend: {
         title: "إرسال طلب لقاء؟",
@@ -517,6 +521,8 @@ export const translations = {
       errors: {
         sendFailed: "Could not send the meeting request. Please try again.",
         cancelFailed: "Could not cancel the request. Please try again.",
+        openLoadFailed:
+          "Could not check your request status. The mentor profile loaded, but request status may be out of date.",
       },
       confirmSend: {
         title: "Send meeting request?",
