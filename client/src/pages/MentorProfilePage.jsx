@@ -8,11 +8,20 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Link,
   Stack,
   Typography,
 } from "@mui/material";
 import { colors, fonts, gradients, radii, shadows } from "../theme/tokens";
+
+// Temporary until Part 1 auth provides the logged-in user.
+// Seed mentee: shira@example.com (id 4 after a fresh init + seed).
+const TEMP_MENTEE_ID = 4;
 
 function DetailRow({ label, children }) {
   if (!children) return null;
@@ -45,6 +54,11 @@ export default function MentorProfilePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [requestError, setRequestError] = useState("");
+  const [requestSuccess, setRequestSuccess] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -52,6 +66,8 @@ export default function MentorProfilePage() {
       setLoading(true);
       setError("");
       setMentor(null);
+      setRequestError("");
+      setRequestSuccess(false);
 
       try {
         const response = await axios.get(`/api/mentors/${id}`);
@@ -80,6 +96,35 @@ export default function MentorProfilePage() {
       cancelled = true;
     };
   }, [id]);
+
+  const handleConfirmRequest = async () => {
+    if (!mentor || submitting || requestSuccess) return;
+
+    setSubmitting(true);
+    setRequestError("");
+
+    try {
+      await axios.post(`/api/mentors/${mentor.userId}/requests`, {
+        menteeId: TEMP_MENTEE_ID,
+      });
+      setRequestSuccess(true);
+      setConfirmOpen(false);
+    } catch (err) {
+      // 409 = backend found an existing open request for this pair
+      if (err.response?.status === 409) {
+        setRequestSuccess(true);
+        setRequestError("");
+      } else {
+        setRequestError(
+          err.response?.data?.message ||
+            "Could not send the meeting request. Please try again."
+        );
+      }
+      setConfirmOpen(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const initials = (mentor?.username || "?")
     .split(/[\s_]+/)
@@ -241,20 +286,64 @@ export default function MentorProfilePage() {
               </Box>
             )}
 
-            {/* Wired to POST /api/mentors/:mentorId/requests in the next task */}
-            <Button variant="contained" size="large" fullWidth disabled>
-              Request Meeting
-            </Button>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ mt: 1.25, textAlign: "center" }}
+            {requestSuccess && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Request sent. Waiting for mentor response.
+              </Alert>
+            )}
+
+            {requestError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {requestError}
+              </Alert>
+            )}
+
+            <Button
+              variant="contained"
+              size="large"
+              fullWidth
+              disabled={submitting || requestSuccess}
+              onClick={() => {
+                setRequestError("");
+                setConfirmOpen(true);
+              }}
             >
-              Meeting request action will be connected in the next step.
-            </Typography>
+              {requestSuccess ? "Request already sent" : "Request Meeting"}
+            </Button>
           </Box>
         )}
       </Box>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => (!submitting ? setConfirmOpen(false) : null)}
+      >
+        <DialogTitle>Send meeting request?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {mentor
+              ? `You are about to request a meeting with ${mentor.username}.`
+              : "You are about to request a meeting."}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setConfirmOpen(false)}
+            disabled={submitting}
+            variant="text"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleConfirmRequest}
+            disabled={submitting}
+            variant="contained"
+            autoFocus
+          >
+            {submitting ? "Sending…" : "Send request"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

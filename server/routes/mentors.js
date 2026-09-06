@@ -146,6 +146,28 @@ router.post("/:mentorId/requests", async (req, res) => {
       return sendError(res, "Mentee not found", 404);
     }
 
+    // Block duplicate open requests for the same mentee ↔ mentor pair.
+    // "Open" = not CANCELLED (PENDING_MENTOR / PENDING_MENTEE / SCHEDULED).
+    const openRequest = await db.query(
+      `SELECT id, mentee_id, mentor_id, status, created_at
+       FROM meeting_requests
+       WHERE mentee_id = $1
+         AND mentor_id = $2
+         AND status <> 'CANCELLED'
+       ORDER BY id DESC
+       LIMIT 1`,
+      [menteeId, mentorId]
+    );
+
+    if (openRequest.rows.length > 0) {
+      return sendError(
+        res,
+        "Request already sent",
+        409,
+        toMeetingRequest(openRequest.rows[0])
+      );
+    }
+
     const insertResult = await db.query(
       `INSERT INTO meeting_requests (mentee_id, mentor_id, status)
        VALUES ($1, $2, 'PENDING_MENTOR')
