@@ -14,7 +14,13 @@
     "install-client": "cd client && npm install",
     "install-all": "npm run install-server && npm run install-client",
     "build": "cd client && npm run build",
-    "start": "cd server && npm start"
+    "start": "cd server && npm start",
+    "db:check": "cd server && npm run db:check",
+    "db:upgrade-passwords": "cd server && npm run db:upgrade-passwords",
+    "db:migrate": "cd server && npm run db:migrate",
+    "db:verify": "cd server && npm run db:verify",
+    "test:server": "cd server && npm test",
+    "test:client": "cd client && npm test -- --watchAll=false"
   },
   "keywords": [
     "nodejs",

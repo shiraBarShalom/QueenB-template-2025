@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
+  Alert,
   Box,
   Button,
   IconButton,
@@ -10,6 +11,7 @@ import {
 } from "@mui/material";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import { useAuth } from "../context/AuthContext";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -21,12 +23,14 @@ const emptyForm = {
 };
 
 function AuthPage() {
-  const navigate = useNavigate();
+  const { signIn, signUp, sessionError } = useAuth();
   const [mode, setMode] = useState("signin");
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [apiError, setApiError] = useState("");
 
   const isSignUp = mode === "signup";
 
@@ -42,6 +46,7 @@ function AuthPage() {
     setMode(nextMode);
     setErrors({});
     setForm(emptyForm);
+    setApiError("");
   };
 
   const handleChange = (field) => (event) => {
@@ -49,6 +54,7 @@ function AuthPage() {
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     }
+    if (apiError) setApiError("");
   };
 
   const validate = () => {
@@ -66,8 +72,8 @@ function AuthPage() {
 
     if (!form.password) {
       next.password = "Password is required";
-    } else if (form.password.length < 6) {
-      next.password = "Use at least 6 characters";
+    } else if (form.password.length < 12) {
+      next.password = "Use at least 12 characters";
     }
 
     if (isSignUp) {
@@ -82,10 +88,41 @@ function AuthPage() {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     if (!validate()) return;
-    navigate("/");
+
+    setSubmitting(true);
+    setApiError("");
+    try {
+      const payload = isSignUp
+        ? {
+            displayName: form.name.trim(),
+            email: form.email.trim(),
+            password: form.password,
+          }
+        : {
+            email: form.email.trim(),
+            password: form.password,
+          };
+      if (isSignUp) await signUp(payload);
+      else await signIn(payload);
+      setForm(emptyForm);
+      setErrors({});
+    } catch (error) {
+      const serverData = error.response?.data;
+      const fieldErrors = serverData?.data?.fields;
+      if (fieldErrors) {
+        setErrors({
+          name: fieldErrors.displayName?.[0],
+          email: fieldErrors.email?.[0],
+          password: fieldErrors.password?.[0],
+        });
+      }
+      setApiError(serverData?.message || "Could not connect to MentorMe. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -256,6 +293,10 @@ function AuthPage() {
             transition: "opacity 220ms ease, transform 220ms ease",
           }}
         >
+          {(apiError || sessionError) && (
+            <Alert severity="error">{apiError || sessionError}</Alert>
+          )}
+
           {isSignUp && (
             <TextField
               label="Name"
@@ -304,6 +345,17 @@ function AuthPage() {
             }}
           />
 
+          {!isSignUp && (
+            <Button
+              component={Link}
+              to="/forgot-password"
+              variant="text"
+              sx={{ alignSelf: "flex-start", px: 0, minWidth: 0 }}
+            >
+              Forgot password?
+            </Button>
+          )}
+
           {isSignUp && (
             <TextField
               label="Confirm password"
@@ -333,8 +385,18 @@ function AuthPage() {
             />
           )}
 
-          <Button type="submit" variant="contained" size="large" sx={{ mt: 0.5 }}>
-            {isSignUp ? "Create account" : "Sign in"}
+          <Button
+            type="submit"
+            variant="contained"
+            size="large"
+            disabled={submitting}
+            sx={{ mt: 0.5 }}
+          >
+            {submitting
+              ? "Please wait…"
+              : isSignUp
+                ? "Create account"
+                : "Sign in"}
           </Button>
         </Box>
       </Box>

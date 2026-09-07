@@ -1,200 +1,219 @@
-# QueenB - Full Stack Task Management Application
-A template for building a full-stack web application using modern technologies - fork this repository to get started quickly.
+# MentorMe
 
-Built with Node.js, Express, React, and Material UI.
+MentorMe is a React, Material UI, Express, and PostgreSQL mentoring application.
+Members sign in, complete a mentee and/or mentor profile, and administrators
+manage accounts from a protected dashboard. Authentication uses Argon2id
+password hashes and server-side sessions stored in PostgreSQL.
 
-## 🚀 Features
+## Security model
 
-- **Modern UI**: Beautiful, responsive interface built with Material UI
-- **RESTful API**: Well-structured backend API with Express.js
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
+- Plaintext passwords are never stored, returned, or logged. Argon2id creates a
+  salted one-way hash.
+- SQL values are always passed separately through PostgreSQL placeholders such
+  as `$1`; user input is never concatenated into SQL.
+- The browser receives only an opaque session cookie. It is HttpOnly,
+  SameSite=Strict, rotated at login, and Secure in production.
+- Login, registration, and password-reset endpoints are rate-limited.
+- The public registration schema rejects unknown fields, including `isAdmin`.
+- Password-reset tokens are random, stored only as SHA-256 hashes, expire, and
+  can be used once. A successful reset revokes every existing session.
+- Forgot-password responses never reveal whether an email exists.
+- Administrators are created only by the local `admin:create` command.
+- Admin mutations are authorized from the database, not from the session flag
+  alone, and privileged changes are written to `admin_actions`.
+- The web server uses a restricted PostgreSQL role. A separate owner role runs
+  migrations.
 
-## 🛠️ Tech Stack
+## 1. Install and verify PostgreSQL on Windows
 
-### Backend
+This machine currently has PostgreSQL entries under `C:\Program Files\PostgreSQL`,
+but no service or `psql.exe` was discoverable. Repair PostgreSQL 18 from
+**Settings > Apps > Installed apps**, or reinstall it:
 
-- **Node.js** - Runtime environment
-- **Express.js** - Web framework
-- **CORS** - Cross-origin resource sharing
-- **Nodemon** - Development auto-restart
-
-### Frontend
-
-- **React 18** - UI library
-- **Material UI (MUI)** - Component library
-- **Axios** - HTTP client
-- **React Scripts** - Build tools
-
-## 📦 Project Structure
-
-```
-QueenB/
-├── server/                 # Backend application
-│   ├── routes/            # API route handlers
-│   ├── index.js           # Server entry point
-│   ├── package.json       # Server dependencies
-│   └── .env.example       # Environment variables template
-├── client/                # Frontend application
-│   ├── public/            # Static files
-│   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── App.js         # Main application component
-│   │   └── index.js       # React entry point
-│   └── package.json       # Client dependencies
-├── package.json           # Root package.json with scripts
-└── README.md              # This file
+```powershell
+winget uninstall --id PostgreSQL.PostgreSQL.18
+winget install --id PostgreSQL.PostgreSQL.18
 ```
 
-## 🚀 Getting Started
+The installer asks for a password for the built-in `postgres` administrator.
+Keep it in a password manager; it is not the password the app will use.
 
-### Prerequisites
+Open a new terminal and verify:
 
-- Node.js (version 14 or higher)
-- npm or yarn package manager
-
-### Installation
-
-1. **Fork the template repository to your own user**
-If you are working as a team, you can choose one member to fork the template repository to their own user, 
-and then share the repository with the rest of the team.
-
-
-2. **Clone or navigate to the project directory**
-
-   ```bash
-   git clone **copied git url**
-   ```
-
-   ```bash
-   cd QueenB
-   ```
-
-2. **Install root dependencies**
-
-   ```bash
-   npm install
-   ```
-
-3. **Install server and client dependencies**
-
-   ```bash
-   npm run install-all
-   ```
-
-   OR:
-
-   - open terminal and run:
-
-   ```bash
-   cd server
-   npm install
-   ```
-
-   - open another terminal
-
-   ```bash
-   cd client
-   npm install
-   ```
-
-4. **Set up environment variables**
-   ```bash
-   cd server
-   cp .env.example .env
-   # Edit .env file with your configuration if needed
-   cd ..
-   ```
-
-### Running the Application
-
-#### Development Mode (Recommended)
-
-#### Running Separately
-
-**Start the backend server:**
-
-```bash
-npm run server
+```powershell
+psql --version
+pg_isready
 ```
 
-**Start the frontend client (in a new terminal):**
+If PostgreSQL is installed but `psql` is not found, add its `bin` directory
+(normally `C:\Program Files\PostgreSQL\18\bin`) to Windows PATH, then reopen the
+terminal.
 
-```bash
-npm run client
+## 2. Back up and create isolated database roles
+
+In pgAdmin, right-click the existing `mentor_me` database and choose
+**Backup...** before changing its schema.
+
+Generate two different strong passwords in PowerShell:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-#### Running Concurrently
+In pgAdmin, open **Login/Group Roles > Create > Login/Group Role**. Create
+`mentorme_owner` and `mentorme_app`, set each generated password on the
+Definition tab, enable Login, and leave Superuser/Create roles/Create databases
+disabled.
 
-Run both client and server concurrently:
+Then run this password-free SQL as `postgres` in the `mentor_me` Query Tool:
 
-```bash
+```sql
+ALTER DATABASE mentor_me OWNER TO mentorme_owner;
+ALTER SCHEMA public OWNER TO mentorme_owner;
+ALTER TABLE public.users OWNER TO mentorme_owner;
+```
+
+`mentorme_owner` may change this database's schema. `mentorme_app` is the
+restricted identity used by the running web server and receives only data
+access from the migration.
+
+## 3. Configure private environment values
+
+Copy the example file:
+
+```powershell
+Copy-Item server\.env.example server\.env
+```
+
+Edit `server\.env`:
+
+```dotenv
+PORT=5000
+NODE_ENV=development
+CLIENT_ORIGIN=http://localhost:3000
+TRUST_PROXY=false
+DATABASE_URL=postgresql://mentorme_app:APP_PASSWORD_HERE@localhost:5432/mentor_me
+MIGRATION_DATABASE_URL=postgresql://mentorme_owner:OWNER_PASSWORD_HERE@localhost:5432/mentor_me
+DB_SSL=false
+DB_SSL_REJECT_UNAUTHORIZED=true
+SESSION_SECRET=PASTE_A_RANDOM_SECRET_HERE
+RESEND_API_KEY=re_your_resend_api_key
+RESEND_FROM_EMAIL=MentorMe <onboarding@resend.dev>
+PASSWORD_RESET_TOKEN_TTL_MINUTES=60
+```
+
+Generate `SESSION_SECRET`:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+`server/.env` is ignored by git. Never commit or send it to another person.
+Each teammate creates their own local file.
+
+## 4. Install, migrate, and run
+
+From the repository root:
+
+```powershell
+npm install
+npm run install-all
+npm run db:upgrade-passwords
+npm run db:migrate
+npm run db:check
 npm run dev
 ```
 
-This will start:
+- `db:upgrade-passwords` is a one-time legacy upgrade. It hashes every value
+  from the old `password` column with Argon2id in a transaction and removes
+  that plaintext column only after all rows succeed.
+- `db:migrate` applies each versioned SQL file once, records its checksum, and
+  never executes the old destructive `DROP TABLE` script.
+- Migration order: `001_secure_auth_profiles.sql`,
+  `002_password_reset_tokens.sql`, `003_roles_account_controls.sql`,
+  `004_admin_audit_log.sql`.
+- `db:check` confirms the restricted runtime role can connect.
+- `dev` starts the API at `http://localhost:5000` and React at
+  `http://localhost:3000`.
 
-- Backend server on http://localhost:5000
-- Frontend client on http://localhost:3000 - you can access the application in your browser at this URL.
+## Password reset with Resend
 
-### Building for Production
+1. Create a [Resend](https://resend.com) account and copy an API key into
+   `RESEND_API_KEY`.
+2. Until a domain is verified, keep
+   `RESEND_FROM_EMAIL=MentorMe <onboarding@resend.dev>`. Resend test mode can
+   deliver only to the email address that owns the Resend account.
+3. After a domain is verified, change `RESEND_FROM_EMAIL` to that sender.
+4. If `RESEND_API_KEY` is empty in development, MentorMe logs the reset link in
+   the server terminal instead of sending email.
 
-1. **Build the React client:**
+Members use **Forgot password?** on the sign-in page. The email contains a
+one-time `/reset-password?token=...` link.
 
-   ```bash
-   npm run build
-   ```
+## Member onboarding
 
-2. **Start the production server:**
-   ```bash
-   npm start
-   ```
+After sign-up or sign-in, incomplete profiles go to `/onboarding`. Members can
+choose mentee, mentor, or both. Each step saves immediately through:
 
+- `PUT /api/users/me/roles`
+- `PATCH /api/users/me`
+- `PATCH /api/users/me/profile`
+- `PATCH /api/users/me/mentor-profile`
 
+Completed members land on `/home` and can return to `/onboarding` to edit.
 
-### Health Check
+## Authentication API
 
-- `GET /api/health` - Server health check
+- `POST /api/users/register` — display name, email, password
+- `POST /api/users/login` — email, password
+- `POST /api/users/forgot-password` — email
+- `POST /api/users/reset-password` — token, password
+- `POST /api/users/logout` — authenticated
+- `GET /api/users/me` — current safe account/profile data
+- `PATCH /api/users/me` — display name
+- `PUT /api/users/me/roles` — `MENTEE` and/or `MENTOR`
+- `PATCH /api/users/me/profile` — shared professional profile
+- `PATCH /api/users/me/mentor-profile` — opt in or update mentor settings
 
+Common profile fields are background, LinkedIn/GitHub URLs, job title, company,
+experience, programming languages, and tech stack. Mentor-only fields are advice
+topics, capacity, meeting duration, and whether requests are accepted.
 
-## 🔧 Development
+## Tests
 
-### Available Scripts
+Fast security tests require no database:
 
-- `npm run dev` - Run both client and server in development mode
-- `npm run server` - Run only the backend server
-- `npm run client` - Run only the frontend client
-- `npm run install-all` - Install dependencies for both client and server
-- `npm run build` - Build the React client for production
-- `npm start` - Start the production server
+```powershell
+npm run test:server
+```
 
-### Key Features
+Frontend guard and form tests:
 
-- **Responsive Design**: The application works on all device sizes
-- **Modern UI**: Material UI components provide a professional look
-- **Error Handling**: Comprehensive error handling on both frontend and backend
-- **Loading States**: User-friendly loading indicators
-- **Form Validation**: Client and server-side validation
-- **Success Feedback**: Clear success and error messages
+```powershell
+$env:CI="true"
+npm run test:client
+```
 
+Database integration tests run only when a dedicated test database is provided.
+Never point this variable at development or production because tests truncate
+users:
 
-## 📝 License
+```powershell
+$env:TEST_DATABASE_URL="postgresql://mentorme_owner:OWNER_PASSWORD_HERE@localhost:5432/mentorme_test"
+npm run test:server
+```
 
-This project is licensed under the MIT License.
+Create `mentorme_test` separately and use a test-only owner. The integration
+suite verifies registration, Argon2 storage, sessions, logout, profile
+authorization, password reset, rate limiting, duplicate accounts, and
+SQL-injection-shaped input.
 
-## 🆘 Troubleshooting
+## Production notes
 
-### Common Issues
-
-1. **Port already in use**: If ports 3000 or 5000 are in use, you can change them in the package.json scripts or .env file
-
-2. **Installation issues**: Delete `node_modules` folders and run `npm run install-all` again
-
-3. **API connection issues**: Ensure the backend server is running on port 5000 and the proxy is configured correctly in the client package.json
-
-### Support
-
-If you encounter any issues, please check the console logs for detailed error messages or create an issue in the repository.
-
----
-
-Built with ❤️ using React, Material UI, and Node.js
+- Use HTTPS and `NODE_ENV=production`; otherwise Secure cookies cannot work.
+- Store secrets in the deployment platform's secret manager, not `.env` in git.
+- Set `CLIENT_ORIGIN` to the exact HTTPS frontend origin.
+- Set `TRUST_PROXY=true` only behind a trusted reverse proxy.
+- Use a managed PostgreSQL service with TLS (`DB_SSL=true`) and backups.
+- Rotate the session secret deliberately; rotation signs every user out.
+- Production requires `RESEND_API_KEY` and a verified sending domain.
