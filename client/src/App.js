@@ -19,6 +19,7 @@ import OnboardingPage from "./pages/OnboardingPage";
 import HomePage from "./pages/HomePage";
 import AdminPage from "./pages/AdminPage";
 import AdminUserPage from "./pages/AdminUserPage";
+import AdminMeetingPage from "./pages/AdminMeetingPage";
 import AppLayout from "./components/app/AppLayout";
 import MenteeHomePage from "./pages/app/MenteeHomePage";
 import PersonalAreaPage from "./pages/app/PersonalAreaPage";
@@ -82,6 +83,14 @@ function App() {
                 element={
                   <RequireAdmin>
                     <AdminUserPage />
+                  </RequireAdmin>
+                }
+              />
+              <Route
+                path="/admin/meetings/:id"
+                element={
+                  <RequireAdmin>
+                    <AdminMeetingPage />
                   </RequireAdmin>
                 }
               />

@@ -15,7 +15,7 @@ const { parseId } = require("./userService");
 const MENTOR_INCLUDE = {
   user: {
     omit: { passwordHash: true },
-    include: { technologies: true },
+    include: { technologies: true, profile: true },
   },
   mentoringTopics: true,
 };

@@ -16,6 +16,7 @@
 //   is used.
 // ============================================================================
 
+require("./config/env");
 const { PrismaClient } = require("@prisma/client");
 
 const globalForPrisma = globalThis;

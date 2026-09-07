@@ -22,9 +22,11 @@ const UNREJECTABLE = new Set(["REJECTED", "CANCELLED", "COMPLETED", "FEEDBACK_CO
 
 // mentee + mentor identity (no passwordHash on either side).
 const REQUEST_INCLUDE = {
-  mentee: { omit: { passwordHash: true } },
+  mentee: { omit: { passwordHash: true }, include: { profile: true } },
   mentorProfile: {
-    include: { user: { omit: { passwordHash: true } } },
+    include: {
+      user: { omit: { passwordHash: true }, include: { profile: true } },
+    },
   },
 };
 

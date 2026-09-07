@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   Button,
+  Paper,
+  Typography,
   Checkbox,
   Dialog,
   DialogActions,
@@ -36,6 +38,7 @@ export default function AdminUserPage() {
   const navigate = useNavigate();
   const { user: actor, refreshUser } = useAuth();
   const [form, setForm] = useState(emptyForm);
+  const [stats, setStats] = useState({ meetingsAsMentor: 0, meetingsAsMentee: 0, createdAt: null });
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -43,7 +46,7 @@ export default function AdminUserPage() {
 
   const handleAdminError = (requestError, fallback) => {
     if (requestError.response?.status === 401) {
-      navigate("/", { replace: true });
+      navigate("/login", { replace: true });
       return;
     }
     if (requestError.response?.status === 403) {
@@ -68,6 +71,11 @@ export default function AdminUserPage() {
           company: user.profile?.company || "",
           yearsOfExperience: user.profile?.yearsOfExperience ?? "",
           onboardingComplete: Boolean(user.profile?.onboardingComplete),
+        });
+        setStats({
+          meetingsAsMentor: user.meetingsAsMentor || 0,
+          meetingsAsMentee: user.meetingsAsMentee || 0,
+          createdAt: user.createdAt || null,
         });
         setError("");
       })
@@ -128,7 +136,7 @@ export default function AdminUserPage() {
       if (action === "sessions") {
         const result = await revokeSessions(id);
         setMessage(`Revoked ${result.revokedSessions} session(s).`);
-        if (String(actor.id) === String(id)) navigate("/", { replace: true });
+        if (String(actor.id) === String(id)) navigate("/login", { replace: true });
       }
     } catch (requestError) {
       handleAdminError(requestError, "Could not complete that administrator action.");
@@ -142,6 +150,21 @@ export default function AdminUserPage() {
       <Stack spacing={2}>
         {error && <Alert severity="error">{error}</Alert>}
         {message && <Alert severity="success">{message}</Alert>}
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+          <Paper sx={{ p: 2, flex: 1 }}>
+            <Typography variant="h4">{stats.meetingsAsMentor}</Typography>
+            <Typography color="text.secondary">Meetings as mentor</Typography>
+          </Paper>
+          <Paper sx={{ p: 2, flex: 1 }}>
+            <Typography variant="h4">{stats.meetingsAsMentee}</Typography>
+            <Typography color="text.secondary">Meetings as mentee</Typography>
+          </Paper>
+        </Stack>
+        {stats.createdAt && (
+          <Typography color="text.secondary">
+            Registered {new Date(stats.createdAt).toLocaleDateString("en-US")}
+          </Typography>
+        )}
         <TextField label="Display name" value={form.displayName} onChange={change("displayName")} />
         <TextField label="Email" type="email" value={form.email} onChange={change("email")} />
         <TextField

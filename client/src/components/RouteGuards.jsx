@@ -41,7 +41,7 @@ export function GuestOnly({ children }) {
   if (!user) return children;
   return (
     <Navigate
-      to={user.profile?.onboardingComplete ? (user.isAdmin ? "/admin" : "/home") : "/onboarding"}
+      to={user.isAdmin ? "/admin" : user.profile?.onboardingComplete ? "/home" : "/onboarding"}
       replace
     />
   );

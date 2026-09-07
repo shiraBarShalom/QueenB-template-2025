@@ -3,50 +3,25 @@
 // access for the User model lives here.
 // ============================================================================
 
-const crypto = require("crypto");
 const prisma = require("../prismaClient");
 const { ApiError } = require("../utils/prismaError");
+const { hashPassword } = require("../security/passwords");
 
-// ----------------------------------------------------------------------------
-// Password hashing (built-in crypto.scrypt — no external dependency).
-// Stored format:  scrypt$<saltHex>$<derivedKeyHex>
-// Swapping this for bcrypt later only touches these two functions.
-// ----------------------------------------------------------------------------
-function hashPassword(plain) {
-  const salt = crypto.randomBytes(16);
-  const derived = crypto.scryptSync(String(plain), salt, 64);
-  return `scrypt$${salt.toString("hex")}$${derived.toString("hex")}`;
-}
-
-// Kept for the future auth step; not wired to any route yet.
-function verifyPassword(plain, stored) {
-  const [scheme, saltHex, keyHex] = String(stored).split("$");
-  if (scheme !== "scrypt" || !saltHex || !keyHex) return false;
-  const derived = crypto.scryptSync(String(plain), Buffer.from(saltHex, "hex"), 64);
-  return crypto.timingSafeEqual(derived, Buffer.from(keyHex, "hex"));
-}
-
-// ----------------------------------------------------------------------------
-// Shared read shape: never return passwordHash, always include technologies.
-// `omit` keeps every other column without having to list them one by one.
-// ----------------------------------------------------------------------------
+// Shared read shape: never return passwordHash. Profile fields live on
+// user_profiles; technologies are the normalized list used by matching.
 const PUBLIC_USER = {
   omit: { passwordHash: true },
-  include: { technologies: true },
+  include: { technologies: true, profile: true, roles: true },
 };
 
-// Fields the client is allowed to set/change directly. `email`/`password` are
-// handled explicitly; `isAdmin`, timestamps and relations are not user-editable
-// through this MVP surface.
-const WRITABLE_FIELDS = [
-  "fullName",
+const PROFILE_FIELDS = [
   "jobTitle",
-  "workplace",
   "yearsOfExperience",
   "profileImageUrl",
   "githubUrl",
   "linkedinUrl",
   "phoneNumber",
+  "background",
 ];
 
 function parseId(raw, label = "id") {
@@ -57,15 +32,15 @@ function parseId(raw, label = "id") {
   return id;
 }
 
-function pick(source, keys) {
+function pickProfile(source) {
   const out = {};
-  for (const key of keys) {
+  for (const key of PROFILE_FIELDS) {
     if (source[key] !== undefined) out[key] = source[key];
   }
+  if (source.workplace !== undefined) out.company = source.workplace;
   return out;
 }
 
-// technologies: ["React", "Node.js"] -> Prisma connectOrCreate on unique name.
 function technologiesConnect(names) {
   if (names === undefined) return undefined;
   if (!Array.isArray(names)) {
@@ -79,9 +54,6 @@ function technologiesConnect(names) {
   };
 }
 
-// ----------------------------------------------------------------------------
-// Operations
-// ----------------------------------------------------------------------------
 async function createUser(body = {}) {
   const { email, password, fullName } = body;
 
@@ -95,17 +67,17 @@ async function createUser(body = {}) {
     throw new ApiError("fullName is required", 400);
   }
 
+  const profile = pickProfile(body);
+  const technologies = technologiesConnect(body.technologies);
   const data = {
     email: email.trim(),
     fullName: fullName.trim(),
-    passwordHash: hashPassword(password),
-    ...pick(body, WRITABLE_FIELDS),
+    passwordHash: await hashPassword(password),
+    profile: { create: profile },
+    roles: { create: { role: "MENTEE" } },
   };
-
-  const technologies = technologiesConnect(body.technologies);
   if (technologies) data.technologies = technologies;
 
-  // A duplicate email surfaces as Prisma P2002 -> 409 (see utils/prismaError).
   return prisma.user.create({ data, ...PUBLIC_USER });
 }
 
@@ -115,15 +87,19 @@ async function listUsers() {
 
 async function getUserById(rawId) {
   const id = parseId(rawId);
-  // findUniqueOrThrow -> P2025 -> 404 when missing.
   return prisma.user.findUniqueOrThrow({ where: { id }, ...PUBLIC_USER });
 }
 
 async function updateUser(rawId, body = {}) {
   const id = parseId(rawId);
+  const data = {};
 
-  const data = pick(body, WRITABLE_FIELDS);
-
+  if (body.fullName !== undefined) {
+    if (!body.fullName || typeof body.fullName !== "string") {
+      throw new ApiError("fullName must be a non-empty string", 400);
+    }
+    data.fullName = body.fullName.trim();
+  }
   if (body.email !== undefined) {
     if (!body.email || typeof body.email !== "string") {
       throw new ApiError("email must be a non-empty string", 400);
@@ -134,14 +110,21 @@ async function updateUser(rawId, body = {}) {
     if (!body.password || typeof body.password !== "string") {
       throw new ApiError("password must be a non-empty string", 400);
     }
-    data.passwordHash = hashPassword(body.password);
+    data.passwordHash = await hashPassword(body.password);
+  }
+
+  const profile = pickProfile(body);
+  if (Object.keys(profile).length > 0) {
+    data.profile = {
+      upsert: {
+        create: profile,
+        update: profile,
+      },
+    };
   }
 
   const technologies = technologiesConnect(body.technologies);
-  if (technologies) {
-    // `set: []` first would be needed to remove; for MVP we only add/keep.
-    data.technologies = technologies;
-  }
+  if (technologies) data.technologies = technologies;
 
   if (Object.keys(data).length === 0) {
     throw new ApiError("No updatable fields provided", 400);
@@ -155,9 +138,7 @@ module.exports = {
   listUsers,
   getUserById,
   updateUser,
-  // exported for reuse by other services / the future auth step
   hashPassword,
-  verifyPassword,
   parseId,
   PUBLIC_USER,
 };

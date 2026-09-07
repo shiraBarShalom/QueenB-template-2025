@@ -14,9 +14,17 @@ const {
   sendUserPasswordReset,
 } = require("../services/adminUsersService");
 const {
+  listReport,
+  getReportById,
+  listCalendar,
+  listAlerts,
+  listParticipants,
+} = require("../services/adminMeetingsService");
+const {
   adminListSchema,
   adminUserUpdateSchema,
   userIdSchema,
+  adminReportQuerySchema,
 } = require("../validation/admin");
 
 const router = express.Router();
@@ -46,6 +54,41 @@ function parseUserId(req, res) {
 router.get(
   "/stats",
   asyncHandler(async (req, res) => sendSuccess(res, await getAdminStats()))
+);
+
+router.get(
+  "/alerts",
+  asyncHandler(async (req, res) => sendSuccess(res, await listAlerts()))
+);
+
+router.get(
+  "/report",
+  asyncHandler(async (req, res) => {
+    const parsed = adminReportQuerySchema.safeParse({
+      status: req.query.status || undefined,
+      participantId: req.query.participantId || undefined,
+    });
+    if (!parsed.success) return sendError(res, "Invalid report filters", 400);
+    return sendSuccess(res, {
+      rows: await listReport(parsed.data),
+      participants: await listParticipants(),
+    });
+  })
+);
+
+router.get(
+  "/report/:id",
+  asyncHandler(async (req, res) => {
+    const parsed = userIdSchema.safeParse(req.params.id);
+    if (!parsed.success) return sendError(res, "Invalid meeting id", 400);
+    const row = await getReportById(parsed.data);
+    return row ? sendSuccess(res, row) : sendError(res, "Meeting not found", 404);
+  })
+);
+
+router.get(
+  "/calendar",
+  asyncHandler(async (req, res) => sendSuccess(res, await listCalendar()))
 );
 
 router.get(

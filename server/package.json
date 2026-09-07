@@ -11,6 +11,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:verify": "node scripts/verify-migration.js",
     "admin:create": "node scripts/create-admin.js",
+    "db:seed-admin-demo": "node scripts/seed-admin-meetings.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",

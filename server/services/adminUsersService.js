@@ -1,6 +1,7 @@
 const db = require("../db");
-const { getUserById } = require("./usersService");
+const { getUserById: getAccountById } = require("./usersService");
 const { requestPasswordReset } = require("./passwordResetService");
+const { getMentoringStats, getMentoringStatsByUserIds } = require("./adminMeetingsService");
 
 class AdminActionError extends Error {
   constructor(message, statusCode = 400) {
@@ -20,6 +21,7 @@ function toListUser(row) {
     onboardingComplete: row.onboarding_complete,
     hasMentorProfile: row.has_mentor_profile,
     roles: row.roles || [],
+    meetingsAsMentor: row.meetingsAsMentor || 0,
   };
 }
 
@@ -46,8 +48,14 @@ async function listUsers({ page, limit, search }) {
       [search, pattern]
     ),
   ]);
+  const stats = await getMentoringStatsByUserIds(users.rows.map((row) => Number(row.id)));
   return {
-    users: users.rows.map(toListUser),
+    users: users.rows.map((row) =>
+      toListUser({
+        ...row,
+        meetingsAsMentor: stats[Number(row.id)]?.meetingsAsMentor || 0,
+      })
+    ),
     total: count.rows[0].total,
     page,
     limit,
@@ -195,8 +203,15 @@ async function revokeUserSessions(actorId, targetId) {
   return result.rowCount;
 }
 
+async function getUserById(id) {
+  const user = await getAccountById(id);
+  if (!user) return null;
+  const stats = await getMentoringStats(id);
+  return { ...user, ...stats };
+}
+
 async function sendUserPasswordReset(actorId, targetId, meta) {
-  const user = await getUserById(targetId);
+  const user = await getAccountById(targetId);
   if (!user) throw new AdminActionError("User not found", 404);
   await requestPasswordReset({ email: user.email, ...meta });
   await db.query(

@@ -1,7 +1,8 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import AdminPage from "./AdminPage";
-import { getStats, listUsers } from "../api/admin";
+import { getStats, listAlerts, listCalendar, listReport, listUsers } from "../api/admin";
 
 jest.mock("../context/AuthContext", () => ({
   useAuth: () => ({ signOut: jest.fn() }),
@@ -10,6 +11,9 @@ jest.mock("../context/AuthContext", () => ({
 jest.mock("../api/admin", () => ({
   getStats: jest.fn(),
   listUsers: jest.fn(),
+  listAlerts: jest.fn(),
+  listReport: jest.fn(),
+  listCalendar: jest.fn(),
 }));
 
 test("renders administrator stats and the user table", async () => {
@@ -27,13 +31,22 @@ test("renders administrator stats and the user table", async () => {
         isAdmin: false,
         isActive: true,
         onboardingComplete: true,
+        meetingsAsMentor: 3,
       },
     ],
   });
+  listAlerts.mockResolvedValue([]);
+  listReport.mockResolvedValue({ rows: [], participants: [] });
+  listCalendar.mockResolvedValue([]);
 
-  render(<AdminPage />);
+  render(
+    <MemoryRouter>
+      <AdminPage />
+    </MemoryRouter>
+  );
 
   expect(await screen.findByText("Mor Shay")).toBeInTheDocument();
   expect(screen.getByText("mor@example.com")).toBeInTheDocument();
   expect(screen.getByText("Members")).toBeInTheDocument();
+  expect(screen.getByText("3")).toBeInTheDocument();
 });

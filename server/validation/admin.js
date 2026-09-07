@@ -38,4 +38,24 @@ const adminUserUpdateSchema = z
 
 const userIdSchema = z.coerce.number().int().positive();
 
-module.exports = { adminListSchema, adminUserUpdateSchema, userIdSchema };
+const reportStatuses = [
+  "WAITING_FOR_MENTOR_SLOTS",
+  "WAITING_FOR_MENTEE_SELECTION",
+  "MATCHED",
+  "ATTENDANCE_CONFIRMED",
+  "COMPLETED",
+  "NOT_COMPLETED",
+  "FEEDBACK_COMPLETED",
+];
+
+const adminReportQuerySchema = z.object({
+  status: z.enum(reportStatuses).optional(),
+  participantId: z.coerce.number().int().positive().optional(),
+});
+
+module.exports = {
+  adminListSchema,
+  adminUserUpdateSchema,
+  userIdSchema,
+  adminReportQuerySchema,
+};
