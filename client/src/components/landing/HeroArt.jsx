@@ -180,21 +180,6 @@ export default function HeroArt({ labels = DEFAULT_LABELS }) {
           transform: "rotate(3deg)",
         }}
       >
-        <Box
-          sx={{
-            textAlign: "start",
-            fontFamily: "var(--mq-font-body)",
-            fontWeight: 700,
-            fontSize: "0.72rem",
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            color: "rgba(159,18,57,0.55)",
-            mb: 1,
-          }}
-        >
-          {labels.cardTitle}
-        </Box>
-
         <Box sx={{ position: "relative", width: "100%", height: 210 }}>
           <Box
             component="svg"

@@ -134,6 +134,7 @@ function AuthPage() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        fontFamily: "var(--mq-font-body)",
         px: { xs: 2.5, sm: 4 },
         py: { xs: 4, sm: 6 },
         background: `
@@ -187,7 +188,7 @@ function AuthPage() {
         <Typography
           component="h1"
           sx={{
-            fontFamily: '"Fraunces", Georgia, serif',
+            fontFamily: "var(--mq-font-display)",
             fontWeight: 700,
             fontSize: { xs: "3rem", sm: "3.75rem" },
             lineHeight: 1.05,
@@ -198,7 +199,7 @@ function AuthPage() {
             textShadow: "0 10px 40px rgba(190, 24, 93, 0.18)",
           }}
         >
-          MentorMe
+          Match Queens
         </Typography>
 
         <Typography

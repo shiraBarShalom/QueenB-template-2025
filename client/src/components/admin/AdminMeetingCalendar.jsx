@@ -2,8 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Box, Button, Stack, Typography } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { REPORT_STATUSES, statusMeta } from "../../admin/meetingStatus";
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+import { useLanguage } from "../../i18n/LanguageProvider";
 
 function startOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -23,7 +22,12 @@ function sameDay(left, right) {
 
 export default function AdminMeetingCalendar({ meetings }) {
   const navigate = useNavigate();
+  const { t, locale } = useLanguage();
+  const admin = t.admin;
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
+  const weekdays = Array.from({ length: 7 }, (_, index) =>
+    new Date(2026, 8, 6 + index).toLocaleDateString(locale, { weekday: "short" })
+  );
 
   const days = useMemo(() => {
     const first = startOfMonth(month);
@@ -50,16 +54,16 @@ export default function AdminMeetingCalendar({ meetings }) {
   return (
     <Stack spacing={2}>
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-        <Button onClick={() => setMonth((current) => addMonths(current, -1))}>Previous</Button>
+        <Button onClick={() => setMonth((current) => addMonths(current, -1))}>{admin.previous}</Button>
         <Typography variant="h6" sx={{ flex: 1, textAlign: { sm: "center" } }}>
-          {month.toLocaleString("en-US", { month: "long", year: "numeric" })}
+          {month.toLocaleString(locale, { month: "long", year: "numeric" })}
         </Typography>
-        <Button onClick={() => setMonth((current) => addMonths(current, 1))}>Next</Button>
+        <Button onClick={() => setMonth((current) => addMonths(current, 1))}>{admin.next}</Button>
       </Stack>
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         {REPORT_STATUSES.map((item) => (
           <Typography key={item.value} variant="caption" sx={{ color: item.color, fontWeight: 700 }}>
-            ● {item.label}
+            ● {admin.statuses[item.value] || item.label}
           </Typography>
         ))}
       </Stack>
@@ -70,7 +74,7 @@ export default function AdminMeetingCalendar({ meetings }) {
           gap: 0.75,
         }}
       >
-        {WEEKDAYS.map((day) => (
+        {weekdays.map((day) => (
           <Typography key={day} variant="caption" sx={{ fontWeight: 700, px: 0.5 }}>
             {day}
           </Typography>

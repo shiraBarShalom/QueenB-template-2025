@@ -12,7 +12,7 @@ export default function PageShell({ title, subtitle, children, maxWidth = 720 })
       }}
     >
       <Paper sx={{ maxWidth, mx: "auto", p: { xs: 2.5, sm: 4 } }}>
-        <Typography variant="h3" component="h1" sx={{ mb: 1 }}>
+        <Typography variant="h3" component="h1" sx={{ mb: subtitle ? 1 : 3 }}>
           {title}
         </Typography>
         {subtitle && (

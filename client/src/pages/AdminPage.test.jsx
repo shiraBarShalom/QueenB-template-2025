@@ -1,11 +1,15 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { LanguageProvider } from "../i18n/LanguageProvider";
 import AdminPage from "./AdminPage";
 import { getStats, listAlerts, listCalendar, listReport, listUsers } from "../api/admin";
 
 jest.mock("../context/AuthContext", () => ({
-  useAuth: () => ({ signOut: jest.fn() }),
+  useAuth: () => ({
+    user: { displayName: "Mor Shay", isAdmin: true },
+    signOut: jest.fn(),
+  }),
 }));
 
 jest.mock("../api/admin", () => ({
@@ -17,6 +21,7 @@ jest.mock("../api/admin", () => ({
 }));
 
 test("renders administrator stats and the user table", async () => {
+  window.localStorage.setItem("matchqueens.lang", "en");
   getStats.mockResolvedValue({ total: 2, active: 2, mentors: 1, admins: 1 });
   listUsers.mockResolvedValue({
     total: 1,
@@ -40,9 +45,11 @@ test("renders administrator stats and the user table", async () => {
   listCalendar.mockResolvedValue([]);
 
   render(
-    <MemoryRouter>
-      <AdminPage />
-    </MemoryRouter>
+    <LanguageProvider>
+      <MemoryRouter>
+        <AdminPage />
+      </MemoryRouter>
+    </LanguageProvider>
   );
 
   expect(await screen.findByText("Mor Shay")).toBeInTheDocument();

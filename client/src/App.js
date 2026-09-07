@@ -20,6 +20,7 @@ import HomePage from "./pages/HomePage";
 import AdminPage from "./pages/AdminPage";
 import AdminUserPage from "./pages/AdminUserPage";
 import AdminMeetingPage from "./pages/AdminMeetingPage";
+import AdminLayout from "./components/admin/AdminLayout";
 import AppLayout from "./components/app/AppLayout";
 import MenteeHomePage from "./pages/app/MenteeHomePage";
 import PersonalAreaPage from "./pages/app/PersonalAreaPage";
@@ -74,26 +75,14 @@ function App() {
                 path="/admin"
                 element={
                   <RequireAdmin>
-                    <AdminPage />
+                    <AdminLayout />
                   </RequireAdmin>
                 }
-              />
-              <Route
-                path="/admin/users/:id"
-                element={
-                  <RequireAdmin>
-                    <AdminUserPage />
-                  </RequireAdmin>
-                }
-              />
-              <Route
-                path="/admin/meetings/:id"
-                element={
-                  <RequireAdmin>
-                    <AdminMeetingPage />
-                  </RequireAdmin>
-                }
-              />
+              >
+                <Route index element={<AdminPage />} />
+                <Route path="users/:id" element={<AdminUserPage />} />
+                <Route path="meetings/:id" element={<AdminMeetingPage />} />
+              </Route>
               <Route
                 path={ROUTES.APP}
                 element={

@@ -21,11 +21,12 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import PageShell from "../components/PageShell";
 import AdminMeetingCalendar from "../components/admin/AdminMeetingCalendar";
 import MeetingStatusChip from "../components/admin/MeetingStatusChip";
 import { useAuth } from "../context/AuthContext";
+import { useLanguage } from "../i18n/LanguageProvider";
 import { getStats, listAlerts, listCalendar, listReport, listUsers } from "../api/admin";
 import { REPORT_STATUSES, formatDateTime } from "../admin/meetingStatus";
 
@@ -39,7 +40,9 @@ function StatCard({ label, value }) {
 }
 
 export default function AdminPage() {
-  const { signOut } = useAuth();
+  const { user } = useAuth();
+  const { t, locale } = useLanguage();
+  const admin = t.admin;
   const navigate = useNavigate();
   const [tab, setTab] = useState("users");
   const [stats, setStats] = useState(null);
@@ -67,7 +70,7 @@ export default function AdminPage() {
       navigate("/home", { replace: true });
       return;
     }
-    setError(requestError.response?.data?.message || "Could not load administrator data.");
+    setError(requestError.response?.data?.message || admin.loadError);
   };
 
   useEffect(() => {
@@ -104,22 +107,14 @@ export default function AdminPage() {
   }, [page, limit, query, statusFilter, participantFilter, navigate]);
 
   return (
-    <PageShell title="Administrator dashboard" subtitle="Meetings, members, and situations that need attention." maxWidth={1100}>
+    <PageShell title={admin.welcome.replace("{name}", user.displayName)} maxWidth={1100}>
       <Stack spacing={3}>
         {error && <Alert severity="error">{error}</Alert>}
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-          <Button component={Link} to="/home" variant="outlined">
-            Home
-          </Button>
-          <Button onClick={() => signOut().catch(() => setError("Could not sign out."))} color="inherit">
-            Sign out
-          </Button>
-        </Stack>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-          <StatCard label="Members" value={stats?.total} />
-          <StatCard label="Active" value={stats?.active} />
-          <StatCard label="Mentors" value={stats?.mentors} />
-          <StatCard label="Admins" value={stats?.admins} />
+          <StatCard label={admin.members} value={stats?.total} />
+          <StatCard label={admin.active} value={stats?.active} />
+          <StatCard label={admin.mentors} value={stats?.mentors} />
+          <StatCard label={admin.admins} value={stats?.admins} />
         </Stack>
         <Tabs
           value={tab}
@@ -127,16 +122,16 @@ export default function AdminPage() {
           variant="scrollable"
           allowScrollButtonsMobile
         >
-          <Tab value="alerts" label={`Alerts (${alerts.length})`} />
-          <Tab value="report" label="Meeting report" />
-          <Tab value="calendar" label="Calendar" />
-          <Tab value="users" label="Users" />
+          <Tab value="alerts" label={`${admin.alerts} (${alerts.length})`} />
+          <Tab value="report" label={admin.report} />
+          <Tab value="calendar" label={admin.calendar} />
+          <Tab value="users" label={admin.users} />
         </Tabs>
 
         {tab === "alerts" && (
           <Stack spacing={1.5}>
             {alerts.length === 0 && !loading && (
-              <Typography color="text.secondary">No situations need attention right now.</Typography>
+              <Typography color="text.secondary">{admin.noAlerts}</Typography>
             )}
             {alerts.map((alert, index) => (
               <Alert
@@ -145,11 +140,11 @@ export default function AdminPage() {
                 action={
                   alert.requestId ? (
                     <Button color="inherit" onClick={() => navigate(`/admin/meetings/${alert.requestId}`)}>
-                      Open
+                      {admin.open}
                     </Button>
                   ) : alert.userId ? (
                     <Button color="inherit" onClick={() => navigate(`/admin/users/${alert.userId}`)}>
-                      Open
+                      {admin.open}
                     </Button>
                   ) : null
                 }
@@ -165,30 +160,30 @@ export default function AdminPage() {
           <Stack spacing={2}>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
               <FormControl fullWidth>
-                <InputLabel id="status-filter-label">Status</InputLabel>
+                <InputLabel id="status-filter-label">{admin.status}</InputLabel>
                 <Select
                   labelId="status-filter-label"
-                  label="Status"
+                  label={admin.status}
                   value={statusFilter}
                   onChange={(event) => setStatusFilter(event.target.value)}
                 >
-                  <MenuItem value="">All statuses</MenuItem>
+                  <MenuItem value="">{admin.allStatuses}</MenuItem>
                   {REPORT_STATUSES.map((item) => (
                     <MenuItem key={item.value} value={item.value}>
-                      {item.label}
+                      {admin.statuses[item.value] || item.label}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
               <FormControl fullWidth>
-                <InputLabel id="participant-filter-label">Participant</InputLabel>
+                <InputLabel id="participant-filter-label">{admin.participant}</InputLabel>
                 <Select
                   labelId="participant-filter-label"
-                  label="Participant"
+                  label={admin.participant}
                   value={participantFilter}
                   onChange={(event) => setParticipantFilter(event.target.value)}
                 >
-                  <MenuItem value="">All participants</MenuItem>
+                  <MenuItem value="">{admin.allParticipants}</MenuItem>
                   {participants.map((person) => (
                     <MenuItem key={person.id} value={String(person.id)}>
                       {person.displayName} ({person.email})
@@ -200,10 +195,10 @@ export default function AdminPage() {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Mentee</TableCell>
-                  <TableCell>Mentor</TableCell>
-                  <TableCell>When</TableCell>
-                  <TableCell>Status</TableCell>
+                  <TableCell>{admin.mentee}</TableCell>
+                  <TableCell>{admin.mentor}</TableCell>
+                  <TableCell>{admin.when}</TableCell>
+                  <TableCell>{admin.status}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -216,7 +211,7 @@ export default function AdminPage() {
                   >
                     <TableCell>{row.mentee?.displayName}</TableCell>
                     <TableCell>{row.mentor?.displayName}</TableCell>
-                    <TableCell>{formatDateTime(row.scheduledStart)}</TableCell>
+                    <TableCell>{formatDateTime(row.scheduledStart, locale, admin.notScheduled)}</TableCell>
                     <TableCell>
                       <MeetingStatusChip status={row.status} />
                     </TableCell>
@@ -224,7 +219,7 @@ export default function AdminPage() {
                 ))}
                 {!loading && report.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4}>No meetings match these filters.</TableCell>
+                    <TableCell colSpan={4}>{admin.noMeetings}</TableCell>
                   </TableRow>
                 )}
               </TableBody>
@@ -247,24 +242,24 @@ export default function AdminPage() {
               <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                 <TextField
                   fullWidth
-                  label="Search name or email"
+                  label={admin.searchLabel}
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
                 <Button type="submit" variant="contained">
-                  Search
+                  {admin.search}
                 </Button>
               </Stack>
             </Box>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Mentoring given</TableCell>
-                  <TableCell>Roles</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Onboarding</TableCell>
+                  <TableCell>{admin.name}</TableCell>
+                  <TableCell>{admin.email}</TableCell>
+                  <TableCell>{admin.mentoringGiven}</TableCell>
+                  <TableCell>{admin.roles}</TableCell>
+                  <TableCell>{admin.status}</TableCell>
+                  <TableCell>{admin.onboarding}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -281,18 +276,18 @@ export default function AdminPage() {
                     <TableCell>
                       <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
                         {(user.roles || []).map((role) => (
-                          <Chip key={role} size="small" label={role === "MENTOR" ? "Mentor" : "Mentee"} />
+                          <Chip key={role} size="small" label={role === "MENTOR" ? admin.roleMentor : admin.roleMentee} />
                         ))}
-                        {user.isAdmin && <Chip size="small" color="secondary" label="Admin" />}
+                        {user.isAdmin && <Chip size="small" color="secondary" label={admin.roleAdmin} />}
                       </Stack>
                     </TableCell>
-                    <TableCell>{user.isActive ? "Active" : "Disabled"}</TableCell>
-                    <TableCell>{user.onboardingComplete ? "Complete" : "In progress"}</TableCell>
+                    <TableCell>{user.isActive ? admin.userActive : admin.userDisabled}</TableCell>
+                    <TableCell>{user.onboardingComplete ? admin.onboardingComplete : admin.onboardingProgress}</TableCell>
                   </TableRow>
                 ))}
                 {!loading && users.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6}>No accounts match this search.</TableCell>
+                    <TableCell colSpan={6}>{admin.noAccounts}</TableCell>
                   </TableRow>
                 )}
               </TableBody>

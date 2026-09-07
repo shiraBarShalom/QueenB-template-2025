@@ -16,14 +16,15 @@ import { translations, LANGUAGES, DEFAULT_LANG } from "./translations";
  *   lang        current language code ("he" | "ar" | "en")
  *   setLang     switch language (persisted to localStorage)
  *   languages   the LANGUAGES list (code, nativeName, dir) for switchers
- *   dir         "rtl" | "ltr" for the current language
- *   t           translations[lang] — the copy dictionary
+   *   dir         "rtl" | "ltr" for the current language
+   *   locale      BCP 47 locale for dates ("he-IL" | "ar" | "en-US")
+   *   t           translations[lang] — the copy dictionary
  *   fonts       { body, display } font stacks for the current language
  *   theme       MUI theme = baseTheme + direction + per-language typography
  *
- * The base app <ThemeProvider> in App.js is intentionally left untouched so
- * AuthPage stays LTR/English; the landing page and AppLayout each apply
- * `theme` from here as a nested ThemeProvider over their own subtree.
+ * Fonts are written onto :root so every page (landing, login, admin)
+ * shares one typeface. The landing page and AppLayout still apply
+ * `theme` from here as a nested ThemeProvider for direction.
  */
 
 /*
@@ -32,9 +33,9 @@ import { translations, LANGUAGES, DEFAULT_LANG } from "./translations";
  * don't take font props still pick up the right typeface.
  */
 const FONT_STACKS = {
-  he: { body: '"Heebo", "Segoe UI", sans-serif', display: '"Rubik", "Heebo", sans-serif' },
-  ar: { body: '"Cairo", "Heebo", "Segoe UI", sans-serif', display: '"Cairo", "Rubik", sans-serif' },
-  en: { body: '"Heebo", "Segoe UI", sans-serif', display: '"Rubik", "Heebo", sans-serif' },
+  he: { body: '"Heebo", "Segoe UI", sans-serif', display: '"Heebo", "Segoe UI", sans-serif' },
+  ar: { body: '"Cairo", "Heebo", "Segoe UI", sans-serif', display: '"Cairo", "Heebo", sans-serif' },
+  en: { body: '"Heebo", "Segoe UI", sans-serif', display: '"Heebo", "Segoe UI", sans-serif' },
 };
 
 const STORAGE_KEY = "matchqueens.lang";
@@ -67,6 +68,7 @@ export function LanguageProvider({ children }) {
 
   const dir = translations[lang]?.dir || "rtl";
   const fonts = FONT_STACKS[lang] || FONT_STACKS[DEFAULT_LANG];
+  const locale = { he: "he-IL", ar: "ar", en: "en-US" }[lang] || "en-US";
 
   // Direction + typography theme, layered on the shared base theme.
   const theme = useMemo(
@@ -89,19 +91,22 @@ export function LanguageProvider({ children }) {
     [dir]
   );
 
-  // Keep the document element's lang/dir in sync for a11y + native form controls.
+  // Keep the document font + lang in sync so landing, login, and admin share one typeface.
   useEffect(() => {
-    const prevLang = document.documentElement.lang;
-    document.documentElement.lang = lang;
+    const root = document.documentElement;
+    const prevLang = root.lang;
+    root.lang = lang;
+    root.style.setProperty("--mq-font-body", fonts.body);
+    root.style.setProperty("--mq-font-display", fonts.display);
     return () => {
-      document.documentElement.lang = prevLang;
+      root.lang = prevLang;
     };
-  }, [lang]);
+  }, [lang, fonts]);
 
   const value = useMemo(
-    () => ({ lang, setLang, languages: LANGUAGES, dir, t: translations[lang], fonts, theme }),
+    () => ({ lang, setLang, languages: LANGUAGES, dir, locale, t: translations[lang], fonts, theme }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lang, dir, fonts, theme]
+    [lang, dir, locale, fonts, theme]
   );
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;

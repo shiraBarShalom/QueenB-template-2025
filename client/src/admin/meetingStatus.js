@@ -56,9 +56,9 @@ export function statusMeta(status) {
   );
 }
 
-export function formatDateTime(value) {
-  if (!value) return "Not scheduled yet";
-  return new Date(value).toLocaleString("en-US", {
+export function formatDateTime(value, locale = "en-US", emptyLabel = "Not scheduled yet") {
+  if (!value) return emptyLabel;
+  return new Date(value).toLocaleString(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   });
