@@ -24,6 +24,29 @@ const prisma = require("../prismaClient");
 const { ApiError } = require("../utils/prismaError");
 const { parseId } = require("./userService");
 const { REQUEST_INCLUDE } = require("./requestService");
+const { createNotifications } = require("./notificationService");
+
+// ----------------------------------------------------------------------------
+// Notification side effects
+// ----------------------------------------------------------------------------
+// Every scheduling transition that the OPPOSITE participant needs to know about
+// writes an IN_APP Notification in the SAME interactive transaction as the
+// status change (via runAction's sideEffect). Row + notification therefore
+// commit or roll back together: the mentee is told "slots are ready" iff the
+// SchedulingRound actually got created, never otherwise.
+
+// Pull the two people on a request out of the REQUEST_INCLUDE-shaped snapshot.
+function participants(request) {
+  return {
+    menteeId: request.menteeId,
+    mentorUserId: request.mentorProfile.userId,
+    menteeName: request.mentee ? request.mentee.fullName : null,
+    mentorName:
+      request.mentorProfile && request.mentorProfile.user
+        ? request.mentorProfile.user.fullName
+        : null,
+  };
+}
 
 // Subset of MentoringRequestStatus this machine reads or writes.
 const STATUS = {
@@ -43,6 +66,14 @@ const ACTION = {
   CANNOT_ATTEND: "CANNOT_ATTEND",
   WITHDRAW: "WITHDRAW",
   CANCEL: "CANCEL",
+  // Part 14: a meeting is already scheduled (MATCHED) but one side can no longer
+  // attend. EITHER participant may send the request back into scheduling, ONCE.
+  RESCHEDULE: "RESCHEDULE",
+  // Part 15: a meeting is scheduled (MATCHED), the single post-match reschedule
+  // was ALREADY used (rescheduleAfterMatchUsed === true), and a participant still
+  // cannot attend. EITHER participant ends the request; the Meeting is cancelled
+  // with a recorded reason. NOT a reschedule - no new round is opened.
+  CANNOT_ATTEND_MEETING: "CANNOT_ATTEND_MEETING",
 };
 
 // Which side of the request the caller of an action must be.
@@ -157,6 +188,54 @@ const TRANSITIONS = [
     to: STATUS.CANCELLED,
     bumpsRetryCount: false,
   },
+
+  // Post-match rescheduling (Part 14). A Meeting exists but a participant cannot
+  // attend the agreed time. EITHER side may move the request back to
+  // WAITING_FOR_MENTOR_SLOTS so the mentor offers fresh times — but only while
+  // the single post-match iteration has not been spent
+  // (rescheduleAfterMatchUsed === false). reschedule() also flips the scheduled
+  // Meeting to RESCHEDULED and sets the flag, in the same transaction.
+  // MATCHED + (mentor|mentee) RESCHEDULE [!rescheduleAfterMatchUsed] -> WAITING_FOR_MENTOR_SLOTS
+  {
+    action: ACTION.RESCHEDULE,
+    from: STATUS.MATCHED,
+    role: ROLE.MENTOR,
+    when: (r) => !r.rescheduleAfterMatchUsed,
+    to: STATUS.WAITING_FOR_MENTOR_SLOTS,
+    bumpsRetryCount: false,
+  },
+  {
+    action: ACTION.RESCHEDULE,
+    from: STATUS.MATCHED,
+    role: ROLE.MENTEE,
+    when: (r) => !r.rescheduleAfterMatchUsed,
+    to: STATUS.WAITING_FOR_MENTOR_SLOTS,
+    bumpsRetryCount: false,
+  },
+
+  // Post-match, RESCHEDULE already spent (Part 15). A participant cannot attend
+  // the scheduled meeting and there is no rescheduling iteration left, so the
+  // request ends here. cannotAttendMeeting() also flips the scheduled Meeting to
+  // CANCELLED (recording who / why / when) and notifies the other participant.
+  // Guarded on rescheduleAfterMatchUsed === true so this action is illegal while
+  // RESCHEDULE is still the correct path (the two are mutually exclusive).
+  // MATCHED + (mentor|mentee) CANNOT_ATTEND_MEETING [rescheduleAfterMatchUsed] -> CANCELLED
+  {
+    action: ACTION.CANNOT_ATTEND_MEETING,
+    from: STATUS.MATCHED,
+    role: ROLE.MENTOR,
+    when: (r) => r.rescheduleAfterMatchUsed,
+    to: STATUS.CANCELLED,
+    bumpsRetryCount: false,
+  },
+  {
+    action: ACTION.CANNOT_ATTEND_MEETING,
+    from: STATUS.MATCHED,
+    role: ROLE.MENTEE,
+    when: (r) => r.rescheduleAfterMatchUsed,
+    to: STATUS.CANCELLED,
+    bumpsRetryCount: false,
+  },
 ];
 
 // ----------------------------------------------------------------------------
@@ -207,21 +286,28 @@ async function guardTransition(rawRequestId, action, rawActingUserId) {
     );
   }
 
-  // Role is fixed per (action, from), so every candidate shares it — safe to
-  // read from the first and check the actor before evaluating any condition.
-  const requiredRole = candidates[0].role;
-  const actualActorId =
-    requiredRole === ROLE.MENTOR
-      ? request.mentorProfile.userId
-      : request.menteeId;
-  if (actingUserId !== actualActorId) {
+  // Most (action, from) pairs are single-role. A few (RESCHEDULE) are legal for
+  // EITHER participant — so resolve which side the caller actually is on this
+  // request, then keep only the candidate rows for that role. A caller who is
+  // neither the mentor nor the mentee, or whose role no candidate allows, is
+  // rejected 403 before any condition is evaluated.
+  const actorRole =
+    actingUserId === request.mentorProfile.userId
+      ? ROLE.MENTOR
+      : actingUserId === request.menteeId
+      ? ROLE.MENTEE
+      : null;
+  const allowedRoles = new Set(candidates.map((t) => t.role));
+  if (!actorRole || !allowedRoles.has(actorRole)) {
+    const requiredRole = candidates[0].role;
     throw new ApiError(
       `User ${actingUserId} is not the ${requiredRole.toLowerCase()} of request ${requestId}`,
       403
     );
   }
 
-  const transition = candidates.find((t) => !t.when || t.when(request));
+  const roleCandidates = candidates.filter((t) => t.role === actorRole);
+  const transition = roleCandidates.find((t) => !t.when || t.when(request));
   if (!transition) {
     throw new ApiError(
       `Action ${action} has no matching rule for request ${requestId} in its current condition`,
@@ -307,7 +393,17 @@ async function runAction(rawRequestId, action, rawActingUserId, sideEffect) {
 // routes to requestService.rejectRequest, left untouched per decision C. Kept
 // here so this module owns every row in the table and so it is testable now.
 function reject(requestId, actingUserId) {
-  return runAction(requestId, ACTION.REJECT, actingUserId);
+  return runAction(requestId, ACTION.REJECT, actingUserId, async (tx, request) => {
+    const p = participants(request);
+    await createNotifications(tx, [
+      {
+        recipientId: p.menteeId,
+        type: "REQUEST_REJECTED",
+        requestId: request.id,
+        payload: { mentorName: p.mentorName },
+      },
+    ]);
+  });
 }
 
 // PENDING_MENTOR + Mentee WITHDRAW -> CANCELLED
@@ -315,7 +411,17 @@ function reject(requestId, actingUserId) {
 // Same action, two legal from-states; guardTransition matches the right row.
 // Never touches retryCount.
 function withdraw(requestId, actingUserId) {
-  return runAction(requestId, ACTION.WITHDRAW, actingUserId);
+  return runAction(requestId, ACTION.WITHDRAW, actingUserId, async (tx, request) => {
+    const p = participants(request);
+    await createNotifications(tx, [
+      {
+        recipientId: p.mentorUserId,
+        type: "REQUEST_CANCELLED",
+        requestId: request.id,
+        payload: { menteeName: p.menteeName, reason: "withdrawn" },
+      },
+    ]);
+  });
 }
 
 // PENDING_MENTEE + Mentee CANNOT_ATTEND. Outcome chosen by guardTransition from
@@ -326,7 +432,42 @@ function withdraw(requestId, actingUserId) {
 // No side writes: the just-rejected round's slots stop being selectable
 // structurally (the next PROPOSE_SLOTS creates a higher-numbered round).
 function cannotAttend(requestId, actingUserId) {
-  return runAction(requestId, ACTION.CANNOT_ATTEND, actingUserId);
+  return runAction(
+    requestId,
+    ACTION.CANNOT_ATTEND,
+    actingUserId,
+    async (tx, request, transition) => {
+      const p = participants(request);
+      if (transition.to === STATUS.WAITING_FOR_MENTOR_SLOTS) {
+        // Another round is owed — the mentor is the one who must act next.
+        await createNotifications(tx, [
+          {
+            recipientId: p.mentorUserId,
+            type: "RESCHEDULE_REQUIRED",
+            requestId: request.id,
+            payload: { menteeName: p.menteeName, reason: "moreSlots" },
+          },
+        ]);
+      } else {
+        // Retry limit reached: the request is closed for good. Tell both sides,
+        // with copy that reflects the real number of rounds allowed.
+        await createNotifications(tx, [
+          {
+            recipientId: p.menteeId,
+            type: "REQUEST_CANCELLED",
+            requestId: request.id,
+            payload: { mentorName: p.mentorName, reason: "noSlotsFound", rounds: RETRY_LIMIT + 1 },
+          },
+          {
+            recipientId: p.mentorUserId,
+            type: "REQUEST_CANCELLED",
+            requestId: request.id,
+            payload: { menteeName: p.menteeName, reason: "noSlotsFound", rounds: RETRY_LIMIT + 1 },
+          },
+        ]);
+      }
+    }
+  );
 }
 
 // ----------------------------------------------------------------------------
@@ -398,14 +539,35 @@ function proposeSlots(requestId, actingUserId, rawSlots) {
       });
       const roundNumber = (last ? last.roundNumber : 0) + 1;
 
+      // Round 1 -> INITIAL. Later rounds are EXTRA_SLOTS (mentee used
+      // CANNOT_ATTEND) unless this request has already gone through a post-match
+      // RESCHEDULE, in which case the fresh times are for re-scheduling an
+      // already-agreed meeting -> RESCHEDULE_BEFORE_MEETING. Scheduling history
+      // (older rounds + their slots) is preserved either way.
+      let type = "INITIAL";
+      if (roundNumber > 1) {
+        type = request.rescheduleAfterMatchUsed ? "RESCHEDULE_BEFORE_MEETING" : "EXTRA_SLOTS";
+      }
+
       await tx.schedulingRound.create({
         data: {
           requestId: request.id,
           roundNumber,
-          type: roundNumber === 1 ? "INITIAL" : "EXTRA_SLOTS",
+          type,
           offeredSlots: { create: slots },
         },
       });
+
+      // The ball is now in the mentee's court — she has times to choose from.
+      const p = participants(request);
+      await createNotifications(tx, [
+        {
+          recipientId: p.menteeId,
+          type: "SLOTS_AVAILABLE",
+          requestId: request.id,
+          payload: { mentorName: p.mentorName, slotCount: slots.length, roundNumber },
+        },
+      ]);
     }
   );
 }
@@ -463,16 +625,47 @@ function selectSlot(requestId, actingUserId, rawOfferedSlotId) {
         );
       }
 
-      await tx.meeting.create({
+      // attemptNumber is (highest so far) + 1. Normally 1; after a post-match
+      // RESCHEDULE the previous Meeting is still on the request (status
+      // RESCHEDULED, kept for history) so this is attempt 2, 3, ... The
+      // @@unique([requestId, attemptNumber]) constraint backs this.
+      const lastMeeting = await tx.meeting.findFirst({
+        where: { requestId: request.id },
+        orderBy: { attemptNumber: "desc" },
+        select: { attemptNumber: true },
+      });
+      const attemptNumber = (lastMeeting ? lastMeeting.attemptNumber : 0) + 1;
+
+      const meeting = await tx.meeting.create({
         data: {
           requestId: request.id,
           selectedSlotId: slot.id,
-          attemptNumber: 1,
+          attemptNumber,
           scheduledStart: slot.startTime,
           scheduledEnd: slot.endTime,
           status: "SCHEDULED", // MeetingStatus.SCHEDULED == request MATCHED
         },
       });
+
+      // A meeting is on the calendar — both people need to see it.
+      const p = participants(request);
+      const when = { start: slot.startTime, end: slot.endTime };
+      await createNotifications(tx, [
+        {
+          recipientId: p.menteeId,
+          type: "MEETING_MATCHED",
+          requestId: request.id,
+          meetingId: meeting.id,
+          payload: { mentorName: p.mentorName, when },
+        },
+        {
+          recipientId: p.mentorUserId,
+          type: "MEETING_MATCHED",
+          requestId: request.id,
+          meetingId: meeting.id,
+          payload: { menteeName: p.menteeName, when },
+        },
+      ]);
     }
   );
 }
@@ -501,6 +694,173 @@ function mentorCancel(requestId, actingUserId) {
           data: { status: "CANCELLED" },
         });
       }
+      // The mentor ended it; the mentee is the one who needs to be told.
+      const p = participants(request);
+      await createNotifications(tx, [
+        {
+          recipientId: p.menteeId,
+          type: "REQUEST_CANCELLED",
+          requestId: request.id,
+          payload: {
+            mentorName: p.mentorName,
+            reason: transition.from === STATUS.MATCHED ? "mentorCancelledMeeting" : "mentorCancelled",
+          },
+        },
+      ]);
+    }
+  );
+}
+
+// ----------------------------------------------------------------------------
+// RESCHEDULE — a participant cannot attend an already-scheduled meeting.
+// ----------------------------------------------------------------------------
+
+// MATCHED + (mentor|mentee) RESCHEDULE [!rescheduleAfterMatchUsed]
+//   -> WAITING_FOR_MENTOR_SLOTS
+// In the same transaction as the status flip:
+//   - the current SCHEDULED Meeting is moved to RESCHEDULED (kept for history —
+//     row + selectedSlot are NOT deleted) so a stale meeting can never keep
+//     showing as active once rescheduling has begun;
+//   - rescheduleAfterMatchUsed is set true, spending the single allowed
+//     post-match iteration (a 2nd RESCHEDULE from a later MATCHED will 409 on
+//     the transition's `when`);
+//   - the OTHER participant is notified (RESCHEDULE_REQUIRED).
+// The mentor then offers fresh times through the ordinary proposeSlots() path
+// (roundNumber increments, type RESCHEDULE_BEFORE_MEETING), and the mentee
+// selects one through selectSlot() (attemptNumber increments -> a new Meeting).
+function reschedule(requestId, actingUserId) {
+  return runAction(
+    requestId,
+    ACTION.RESCHEDULE,
+    actingUserId,
+    async (tx, request) => {
+      // Guarded by the transition's `when`, but re-assert under the CAS so a
+      // racing RESCHEDULE cannot double-spend the iteration.
+      const { count } = await tx.mentoringRequest.updateMany({
+        where: { id: request.id, rescheduleAfterMatchUsed: false },
+        data: { rescheduleAfterMatchUsed: true },
+      });
+      if (count !== 1) {
+        throw new ApiError(
+          `Request ${request.id} has already used its post-match rescheduling`,
+          409
+        );
+      }
+
+      await tx.meeting.updateMany({
+        where: { requestId: request.id, status: "SCHEDULED" },
+        data: { status: "RESCHEDULED" },
+      });
+
+      const p = participants(request);
+      const otherId =
+        actingUserId === p.mentorUserId ? p.menteeId : p.mentorUserId;
+      await createNotifications(tx, [
+        {
+          recipientId: otherId,
+          type: "RESCHEDULE_REQUIRED",
+          requestId: request.id,
+          payload: {
+            reason: "cannotAttendMeeting",
+            byMentor: actingUserId === p.mentorUserId,
+            mentorName: p.mentorName,
+            menteeName: p.menteeName,
+          },
+        },
+      ]);
+    }
+  );
+}
+
+// ----------------------------------------------------------------------------
+// CANNOT_ATTEND_MEETING — a participant cannot attend the scheduled meeting and
+// no rescheduling iteration remains (Part 15).
+// ----------------------------------------------------------------------------
+
+// A reason for the other side is REQUIRED. Trimmed, with a sane length window so
+// it is neither empty/uninformative nor an essay stored in one row.
+const MIN_CANNOT_ATTEND_REASON = 10;
+const MAX_CANNOT_ATTEND_REASON = 500;
+
+function normalizeCannotAttendReason(raw) {
+  const reason = typeof raw === "string" ? raw.trim() : "";
+  if (reason.length < MIN_CANNOT_ATTEND_REASON) {
+    throw new ApiError(
+      `reason must be at least ${MIN_CANNOT_ATTEND_REASON} characters`,
+      400
+    );
+  }
+  if (reason.length > MAX_CANNOT_ATTEND_REASON) {
+    throw new ApiError(
+      `reason must be at most ${MAX_CANNOT_ATTEND_REASON} characters`,
+      400
+    );
+  }
+  return reason;
+}
+
+// MATCHED + (mentor|mentee) CANNOT_ATTEND_MEETING [rescheduleAfterMatchUsed] -> CANCELLED.
+// In the same transaction as the status flip:
+//   - the current SCHEDULED Meeting is moved to CANCELLED and stamped with
+//     cancelledByUserId / cancellationReason / cancelledAt (the authoritative
+//     record — older RESCHEDULED/other meetings and every SchedulingRound are
+//     left untouched, so history is preserved);
+//   - the OTHER participant gets a REQUEST_CANCELLED notification whose payload
+//     carries `reason: "cannotAttendMeeting"`, `byMentor`, and the free-text
+//     `explanation` for display.
+// Distinct from RESCHEDULE (which opens a new round) and from mentorCancel
+// (mentor-only, no reason, not gated on rescheduleAfterMatchUsed).
+function cannotAttendMeeting(requestId, actingUserId, rawReason) {
+  const reason = normalizeCannotAttendReason(rawReason);
+
+  return runAction(
+    requestId,
+    ACTION.CANNOT_ATTEND_MEETING,
+    actingUserId,
+    async (tx, request) => {
+      const meeting = await tx.meeting.findFirst({
+        where: { requestId: request.id, status: "SCHEDULED" },
+        orderBy: { attemptNumber: "desc" },
+        select: { id: true },
+      });
+      // A MATCHED request always has exactly one SCHEDULED meeting. If it is
+      // gone, the row moved under us (concurrent cancel / mentor cancel) — fail
+      // the whole action rather than end the request with no meeting cancelled.
+      if (!meeting) {
+        throw new ApiError(
+          `Request ${request.id} is ${request.status} but has no scheduled meeting to cancel`,
+          409
+        );
+      }
+
+      await tx.meeting.update({
+        where: { id: meeting.id },
+        data: {
+          status: "CANCELLED",
+          cancelledByUserId: actingUserId,
+          cancellationReason: reason,
+          cancelledAt: new Date(),
+        },
+      });
+
+      const p = participants(request);
+      const byMentor = actingUserId === p.mentorUserId;
+      const otherId = byMentor ? p.menteeId : p.mentorUserId;
+      await createNotifications(tx, [
+        {
+          recipientId: otherId,
+          type: "REQUEST_CANCELLED",
+          requestId: request.id,
+          meetingId: meeting.id,
+          payload: {
+            reason: "cannotAttendMeeting",
+            byMentor,
+            mentorName: p.mentorName,
+            menteeName: p.menteeName,
+            explanation: reason,
+          },
+        },
+      ]);
     }
   );
 }
@@ -511,6 +871,8 @@ module.exports = {
   ROLE,
   RETRY_LIMIT,
   TRANSITIONS,
+  MIN_CANNOT_ATTEND_REASON,
+  MAX_CANNOT_ATTEND_REASON,
   guardTransition,
   applyStatusChange,
   reject,
@@ -519,4 +881,6 @@ module.exports = {
   proposeSlots,
   selectSlot,
   mentorCancel,
+  reschedule,
+  cannotAttendMeeting,
 };

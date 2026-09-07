@@ -90,3 +90,41 @@ export async function proposeMentoringRequestSlots(requestId, actingUserId, slot
     throw toClientError(err);
   }
 }
+
+/**
+ * POST /api/requests/:requestId/reschedule   Body: { actingUserId }
+ * Part 14 — the mentor can no longer attend an already-scheduled meeting.
+ * schedulingService.reschedule: MATCHED -> WAITING_FOR_MENTOR_SLOTS (once only),
+ * flips the Meeting to RESCHEDULED and notifies the mentee. The request then
+ * reappears in "Requests awaiting your reply" for a fresh propose-slots.
+ *   403 wrong actor · 409 not MATCHED / already rescheduled once / CAS.
+ */
+export async function rescheduleMentoringRequest(requestId, actingUserId) {
+  try {
+    const res = await http.post(`/requests/${requestId}/reschedule`, { actingUserId });
+    return res.data.data;
+  } catch (err) {
+    throw toClientError(err);
+  }
+}
+
+/**
+ * POST /api/requests/:requestId/cannot-attend-meeting   Body: { actingUserId, reason }
+ * Part 15 — the mentor cannot attend the scheduled meeting and the single
+ * post-match reschedule was ALREADY used. schedulingService.cannotAttendMeeting:
+ * MATCHED -> CANCELLED, Meeting -> CANCELLED (with who/why/when), and the mentee
+ * is notified with the reason. NOT a reschedule.
+ *   400 reason missing / too short / too long · 403 wrong actor ·
+ *   409 not MATCHED / reschedule not yet used / no scheduled meeting / CAS.
+ */
+export async function cannotAttendMeetingRequest(requestId, actingUserId, reason) {
+  try {
+    const res = await http.post(`/requests/${requestId}/cannot-attend-meeting`, {
+      actingUserId,
+      reason,
+    });
+    return res.data.data;
+  } catch (err) {
+    throw toClientError(err);
+  }
+}

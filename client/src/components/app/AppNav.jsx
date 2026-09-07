@@ -11,6 +11,7 @@ import { useCurrentUser } from "../../auth/useCurrentUser";
 import MatchQueensLogo from "../MatchQueensLogo";
 import NavShell, { NavDrawer } from "../common/NavShell";
 import LanguageSwitcher from "../common/LanguageSwitcher";
+import NotificationBell from "./notifications/NotificationBell";
 
 /**
  * Authenticated navbar. Same shell/style as the public LandingNav so the
@@ -85,11 +86,13 @@ export default function AppNav() {
     </Button>
   );
 
+  // The logo links to the public home page ("/"). Same target everywhere it
+  // renders in this shared header (desktop start zone, mobile bar, drawer).
   const logo = (
     <Box
       component={RouterLink}
-      to={ROUTES.APP}
-      aria-label={nav.brandAria}
+      to={ROUTES.HOME}
+      aria-label={nav.homeAria}
       sx={{ display: "inline-flex", alignItems: "center", p: 0, borderRadius: 2 }}
     >
       <MatchQueensLogo size={32} />
@@ -104,6 +107,7 @@ export default function AppNav() {
 
   const endZone = (
     <Stack direction="row" spacing={1} alignItems="center">
+      <NotificationBell />
       <LanguageSwitcher variant="button" label={nav.language} />
       {logoutButton}
     </Stack>
@@ -118,12 +122,25 @@ export default function AppNav() {
     </Stack>
   );
 
-  const mobileEnd = <LanguageSwitcher variant="icon" label={nav.language} />;
+  const mobileEnd = (
+    <Stack direction="row" spacing={0.5} alignItems="center">
+      <NotificationBell />
+      <LanguageSwitcher variant="icon" label={nav.language} />
+    </Stack>
+  );
 
   const drawer = (
     <NavDrawer open={open} onClose={() => setOpen(false)} dir={dir}>
       <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
-        <MatchQueensLogo size={27} />
+        <Box
+          component={RouterLink}
+          to={ROUTES.HOME}
+          aria-label={nav.homeAria}
+          onClick={() => setOpen(false)}
+          sx={{ display: "inline-flex", alignItems: "center", p: 0, borderRadius: 2 }}
+        >
+          <MatchQueensLogo size={27} />
+        </Box>
         <IconButton aria-label={nav.closeMenu} onClick={() => setOpen(false)}>
           <CloseRoundedIcon />
         </IconButton>

@@ -12,6 +12,7 @@ import PersonalAreaPage from "./pages/app/PersonalAreaPage";
 import MentorAreaPage from "./pages/app/MentorAreaPage";
 import ProposeSlotsPage from "./pages/app/ProposeSlotsPage";
 import BecomeMentorPage from "./pages/app/BecomeMentorPage";
+import MeetingFeedbackPage from "./pages/app/MeetingFeedbackPage";
 
 function App() {
   return (
@@ -25,6 +26,16 @@ function App() {
             <Route path={ROUTES.HOME} element={<LandingPage />} />
             {/* Existing authentication page (sign-in / sign-up in one component) */}
             <Route path={ROUTES.LOGIN} element={<AuthPage />} />
+
+            {/*
+              Post-meeting feedback — a focused, standalone page. Deliberately
+              NOT nested under <AppLayout>: the user arrives here from a
+              notification only to complete feedback, so it renders its own
+              minimal shell (logo + card) with no app nav. Declared before the
+              /app layout route so the exact path wins.
+              FUTURE: wrap with <RequireAuth> alongside the /app subtree.
+            */}
+            <Route path={ROUTES.APP_MEETING_FEEDBACK} element={<MeetingFeedbackPage />} />
 
             {/*
               Authenticated area. Placeholder shells for now.

@@ -109,4 +109,46 @@ router.post("/:requestId/cancel", async (req, res) => {
   }
 });
 
+// POST /api/requests/:requestId/reschedule
+// Body: { actingUserId }
+// Part 14 — a participant (mentor OR mentee) can no longer attend an
+// already-scheduled meeting. Sends the request back to WAITING_FOR_MENTOR_SLOTS
+// exactly once; also flips the scheduled Meeting to RESCHEDULED and notifies the
+// other participant.
+//   MATCHED -> WAITING_FOR_MENTOR_SLOTS
+//   403 not a participant · 409 not MATCHED / already rescheduled once / CAS.
+router.post("/:requestId/reschedule", async (req, res) => {
+  try {
+    const request = await schedulingService.reschedule(
+      req.params.requestId,
+      req.body.actingUserId
+    );
+    return sendSuccess(res, request, "Request sent back to scheduling");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
+// POST /api/requests/:requestId/cannot-attend-meeting
+// Body: { actingUserId, reason }
+// Part 15 — a participant (mentor OR mentee) cannot attend the scheduled meeting
+// and the single post-match reschedule was ALREADY used. Ends the request:
+// Meeting -> CANCELLED (with who/why/when), MentoringRequest -> CANCELLED, and
+// the other participant is notified with the free-text reason. NOT a reschedule.
+//   MATCHED -> CANCELLED
+//   400 missing / too short / too long reason · 403 not a participant ·
+//   409 not MATCHED / reschedule not yet used / no scheduled meeting / CAS.
+router.post("/:requestId/cannot-attend-meeting", async (req, res) => {
+  try {
+    const request = await schedulingService.cannotAttendMeeting(
+      req.params.requestId,
+      req.body.actingUserId,
+      req.body.reason
+    );
+    return sendSuccess(res, request, "Meeting cancelled; request closed");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
 module.exports = router;

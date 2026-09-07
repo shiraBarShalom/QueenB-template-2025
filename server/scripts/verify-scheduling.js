@@ -77,6 +77,11 @@ async function cleanup() {
   const roundIds = rounds.map((r) => r.id);
 
   // FK-safe delete order (all relations are onDelete: RESTRICT).
+  await prisma.notification.deleteMany({
+    where: {
+      OR: [{ recipientId: { in: userIds } }, { requestId: { in: requestIds } }],
+    },
+  });
   await prisma.meeting.deleteMany({ where: { requestId: { in: requestIds } } });
   await prisma.offeredSlot.deleteMany({ where: { schedulingRoundId: { in: roundIds } } });
   await prisma.schedulingRound.deleteMany({ where: { requestId: { in: requestIds } } });
@@ -354,6 +359,126 @@ async function main() {
       data: { menteeId: MENTOR, mentorProfileId: mentorProfile.id, status: "WAITING_FOR_MENTOR_SLOTS" },
     });
     await expectStatus("any action on a self-request -> 409", sched.proposeSlots(selfReq.id, MENTOR, futureSlots(2)), 409);
+  }
+
+  // === 18. Post-match RESCHEDULE (once) + CANNOT_ATTEND_MEETING (Part 14/15) ===
+  console.log("\n[18] Reschedule limit + cannot-attend-meeting");
+
+  // Drive a request all the way to MATCHED and return { id, slotId }.
+  const toMatched = async () => {
+    const r = await newRequest();
+    await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+    const round = await prisma.schedulingRound.findFirst({
+      where: { requestId: r.id }, orderBy: { roundNumber: "desc" }, include: { offeredSlots: true },
+    });
+    await sched.selectSlot(r.id, MENTEE, round.offeredSlots[0].id);
+    return r.id;
+  };
+  const reschedUsed = async (id) =>
+    (await prisma.mentoringRequest.findUnique({ where: { id }, select: { rescheduleAfterMatchUsed: true } }))
+      .rescheduleAfterMatchUsed;
+
+  // 18a — mentor cannot attend, ending direction
+  {
+    const id = await toMatched();
+    await expectStatus(
+      "CANNOT_ATTEND_MEETING before reschedule used -> 409",
+      () => sched.cannotAttendMeeting(id, MENTEE, "Perfectly valid reason text here."),
+      409
+    );
+
+    await sched.reschedule(id, MENTEE);
+    assert("first RESCHEDULE -> WAITING_FOR_MENTOR_SLOTS + flag set",
+      (await statusOf(id)) === "WAITING_FOR_MENTOR_SLOTS" && (await reschedUsed(id)) === true);
+    const m1 = await prisma.meeting.findFirst({ where: { requestId: id }, orderBy: { attemptNumber: "desc" } });
+    assert("superseded meeting kept as RESCHEDULED", m1.status === "RESCHEDULED");
+
+    // mentor re-proposes, mentee re-selects -> MATCHED again (attempt 2)
+    await sched.proposeSlots(id, MENTOR, futureSlots(2));
+    const round2 = await prisma.schedulingRound.findFirst({
+      where: { requestId: id }, orderBy: { roundNumber: "desc" }, include: { offeredSlots: true },
+    });
+    await sched.selectSlot(id, MENTEE, round2.offeredSlots[0].id);
+    assert("re-matched -> MATCHED, attempt 2", (await statusOf(id)) === "MATCHED" && (await meetingCount(id)) === 2);
+
+    await expectStatus("2nd RESCHEDULE -> 409", () => sched.reschedule(id, MENTEE), 409);
+    await expectStatus("cannot-attend-meeting: reason too short -> 400",
+      () => sched.cannotAttendMeeting(id, MENTOR, "nope"), 400);
+    await expectStatus("cannot-attend-meeting: reason too long -> 400",
+      () => sched.cannotAttendMeeting(id, MENTOR, "x".repeat(501)), 400);
+    await expectStatus("cannot-attend-meeting: non-participant -> 403",
+      () => sched.cannotAttendMeeting(id, MENTEE2, "A perfectly reasonable explanation."), 403);
+
+    const REASON = "I was pulled into an unavoidable on-call incident tonight, so sorry.";
+    await sched.cannotAttendMeeting(id, MENTOR, REASON);
+    assert("cannot-attend-meeting -> request CANCELLED", (await statusOf(id)) === "CANCELLED");
+
+    const meetings = await prisma.meeting.findMany({ where: { requestId: id }, orderBy: { attemptNumber: "asc" } });
+    assert("history preserved: 2 meetings, older still RESCHEDULED",
+      meetings.length === 2 && meetings[0].status === "RESCHEDULED");
+    const active = meetings[1];
+    assert("active meeting -> CANCELLED + who/why/when stamped",
+      active.status === "CANCELLED" &&
+      active.cancelledByUserId === MENTOR &&
+      active.cancellationReason === REASON &&
+      active.cancelledAt instanceof Date);
+    const roundCount = await prisma.schedulingRound.count({ where: { requestId: id } });
+    assert("scheduling rounds preserved (2)", roundCount === 2);
+
+    const notif = await prisma.notification.findFirst({
+      where: { requestId: id, type: "REQUEST_CANCELLED" }, orderBy: { createdAt: "desc" },
+    });
+    assert("mentee notified with reason + explanation snapshot",
+      notif && notif.recipientId === MENTEE && notif.meetingId === active.id &&
+      notif.payload && notif.payload.reason === "cannotAttendMeeting" &&
+      notif.payload.byMentor === true && notif.payload.explanation === REASON);
+
+    await expectStatus("duplicate cannot-attend-meeting -> 409",
+      () => sched.cannotAttendMeeting(id, MENTOR, REASON), 409);
+  }
+
+  // 18b — mentee cannot attend (other direction: mentor is notified)
+  {
+    const id = await toMatched();
+    await sched.reschedule(id, MENTOR);
+    await sched.proposeSlots(id, MENTOR, futureSlots(2));
+    const round = await prisma.schedulingRound.findFirst({
+      where: { requestId: id }, orderBy: { roundNumber: "desc" }, include: { offeredSlots: true },
+    });
+    await sched.selectSlot(id, MENTEE, round.offeredSlots[0].id);
+
+    const REASON = "A work deadline moved and I now have to be in the office that evening.";
+    await sched.cannotAttendMeeting(id, MENTEE, REASON);
+    assert("mentee direction -> CANCELLED", (await statusOf(id)) === "CANCELLED");
+    const active = await prisma.meeting.findFirst({ where: { requestId: id }, orderBy: { attemptNumber: "desc" } });
+    assert("active meeting CANCELLED by mentee", active.status === "CANCELLED" && active.cancelledByUserId === MENTEE);
+    const notif = await prisma.notification.findFirst({
+      where: { requestId: id, type: "REQUEST_CANCELLED" }, orderBy: { createdAt: "desc" },
+    });
+    assert("mentor notified, byMentor:false, explanation carried",
+      notif && notif.recipientId === MENTOR && notif.payload.byMentor === false &&
+      notif.payload.explanation === REASON);
+  }
+
+  // 18c — concurrent duplicate CANNOT_ATTEND_MEETING: exactly one wins
+  {
+    const id = await toMatched();
+    await sched.reschedule(id, MENTEE);
+    await sched.proposeSlots(id, MENTOR, futureSlots(2));
+    const round = await prisma.schedulingRound.findFirst({
+      where: { requestId: id }, orderBy: { roundNumber: "desc" }, include: { offeredSlots: true },
+    });
+    await sched.selectSlot(id, MENTEE, round.offeredSlots[0].id);
+    const results = await Promise.allSettled([
+      sched.cannotAttendMeeting(id, MENTOR, "Reason from the mentor side, long enough."),
+      sched.cannotAttendMeeting(id, MENTEE, "Reason from the mentee side, long enough."),
+    ]);
+    const fulfilled = results.filter((x) => x.status === "fulfilled").length;
+    assert("concurrent cannot-attend-meeting: exactly one succeeded", fulfilled === 1);
+    const cancelledMeetings = await prisma.meeting.count({
+      where: { requestId: id, status: "CANCELLED" },
+    });
+    assert("exactly one meeting ended up CANCELLED", cancelledMeetings === 1);
   }
 
   console.log(`\n${"=".repeat(50)}\n  PASSED: ${passed}    FAILED: ${failed}\n${"=".repeat(50)}`);

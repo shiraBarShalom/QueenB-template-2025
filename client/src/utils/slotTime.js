@@ -78,6 +78,27 @@ export function formatSlotLabel(ms, lang) {
   return `${day}, ${formatTime(ms, lang)}`;
 }
 
+/** e.g. "Monday, 8 September, 10:00" — a full date + start time. Accepts ms or ISO. */
+export function formatDateTimeLabel(value, lang) {
+  const d = new Date(value);
+  return d.toLocaleString(lang, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/** e.g. "10:00 – 10:30". Accepts ms or ISO for each end. */
+export function formatTimeRange(start, end, lang) {
+  return `${formatTime(new Date(start).getTime(), lang)} – ${formatTime(
+    new Date(end).getTime(),
+    lang
+  )}`;
+}
+
 /** One { startTime, endTime } payload entry for the backend. */
 export function toPayloadSlot(startMs, durationMinutes) {
   return {

@@ -6,6 +6,7 @@ import PageHeader from "../../components/app/PageHeader";
 import ContentCard from "../../components/app/ContentCard";
 import ListContainer from "../../components/app/ListContainer";
 import StatusChip from "../../components/app/StatusChip";
+import MenteeSchedulingSection from "../../components/app/mentee/MenteeSchedulingSection";
 
 /**
  * `/app/personal-area` — generic user personal area.
@@ -70,6 +71,10 @@ export default function PersonalAreaPage() {
             {c.profileHint}
           </Typography>
         </ContentCard>
+
+        {/* Scheduling (Part 4) — self-contained, additive block. Owns its own
+            data fetch, actions, dialogs and toasts. */}
+        <MenteeSchedulingSection />
 
         {/* Requests & meetings — demo rows (swap for real data / empty state) */}
         <ContentCard title={c.requestsTitle}>

@@ -62,4 +62,17 @@ router.get("/mentees/:userId/requests", async (req, res) => {
   }
 });
 
+// GET /api/mentees/:userId/scheduling — Personal Area (Part 4) read model:
+// the mentee's WAITING_FOR_MENTEE_SELECTION (proposal + retryCount) and MATCHED
+// (meeting) requests. Read-only projection; all transitions stay in
+// schedulingService via the POST routes in routes/scheduling.js.
+router.get("/mentees/:userId/scheduling", async (req, res) => {
+  try {
+    const items = await requestService.getMenteeScheduling(req.params.userId);
+    return sendSuccess(res, items, "Mentee scheduling fetched");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
 module.exports = router;

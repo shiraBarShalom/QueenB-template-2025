@@ -98,4 +98,15 @@ code {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
   }
+  /* Non-essential MUI enter/leave animation (notification popover, dialogs,
+     snackbars, buttons). Keep it instant but functional for reduced-motion
+     users. */
+  .MuiBackdrop-root,
+  .MuiPopover-paper,
+  .MuiDialog-paper,
+  .MuiSnackbar-root .MuiPaper-root,
+  .MuiButtonBase-root {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
 }

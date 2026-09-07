@@ -7,13 +7,12 @@
 // ============================================================================
 
 generator client {
-provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
-
 datasource db {
-provider = "postgresql"
-url = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ----------------------------------------------------------------------------
@@ -23,62 +22,99 @@ url = env("DATABASE_URL")
 // Lifecycle of a mentee's request to a specific mentor. Reused across
 // rescheduling iterations rather than replaced by a new model each time.
 enum MentoringRequestStatus {
-WAITING_FOR_MENTOR_SLOTS // mentor has not yet offered times
-WAITING_FOR_MENTEE_SELECTION // mentor offered times, mentee has not chosen
-REJECTED // mentor rejected the request
-MATCHED // mentee selected a slot, a Meeting exists
-ATTENDANCE_CONFIRMED // both sides confirmed attendance for the current meeting
-COMPLETED // meeting happened and is done
-NOT_COMPLETED // meeting did not happen
-FEEDBACK_COMPLETED // both sides submitted feedback
-CANCELLED // process ended without a completed meeting
+  WAITING_FOR_MENTOR_SLOTS // mentor has not yet offered times
+  WAITING_FOR_MENTEE_SELECTION // mentor offered times, mentee has not chosen
+  REJECTED // mentor rejected the request
+  MATCHED // mentee selected a slot, a Meeting exists
+  ATTENDANCE_CONFIRMED // both sides confirmed attendance for the current meeting
+  COMPLETED // meeting happened and is done
+  NOT_COMPLETED // meeting did not happen
+  FEEDBACK_COMPLETED // both sides submitted feedback
+  CANCELLED // process ended without a completed meeting
 }
 
 // One round of "mentor offers slots -> mentee picks one" within a request.
 enum SchedulingRoundType {
-INITIAL // first set of slots offered for the request
-EXTRA_SLOTS // mentee used CANNOT_ATTEND to ask for another round (allowed twice; retryCount 0..2, enforced in schedulingService)
-RESCHEDULE_BEFORE_MEETING // either side reported the matched time no longer works
-RESCHEDULE_AFTER_NO_SHOW // meeting did not happen and both sides want another try
+  INITIAL // first set of slots offered for the request
+  EXTRA_SLOTS // mentee used CANNOT_ATTEND to ask for another round (allowed twice; retryCount 0..2, enforced in schedulingService)
+  RESCHEDULE_BEFORE_MEETING // either side reported the matched time no longer works
+  RESCHEDULE_AFTER_NO_SHOW // meeting did not happen and both sides want another try
 }
 
 enum MeetingStatus {
-SCHEDULED
-ATTENDANCE_CONFIRMED
-COMPLETED
-NOT_COMPLETED
-RESCHEDULED
-CANCELLED
+  SCHEDULED
+  ATTENDANCE_CONFIRMED
+  COMPLETED
+  NOT_COMPLETED
+  RESCHEDULED
+  CANCELLED
 }
 
 enum AttendanceStatus {
-PENDING
-CONFIRMED
-DECLINED
+  PENDING
+  CONFIRMED
+  DECLINED
+}
+
+// Which side of a meeting a Feedback row was authored by. Denormalized onto
+// Feedback (derived once from the request) so mentor-vs-mentee analytics never
+// have to re-join back through Meeting -> MentoringRequest -> MentorProfile.
+enum ParticipantRole {
+  MENTEE
+  MENTOR
+}
+
+// Structured "why didn't the meeting happen?" answer (post-meeting flow). A
+// closed list so the admin can aggregate it; free text goes in
+// Feedback.notOccurredExplanation alongside it. OTHER requires an explanation.
+enum MeetingNonOccurrenceReason {
+  COULD_NOT_ATTEND // לא הסתדר לי להגיע
+  OTHER_PARTY_NO_SHOW // הצד השני לא הגיע
+  CANCELLED_IN_ADVANCE // ביטלנו מראש
+  TECHNICAL_ISSUE // הייתה בעיה טכנית
+  COULD_NOT_RESCHEDULE // לא הצלחנו לתאם מחדש
+  OTHER // אחר (+ free text)
+}
+
+// "Was the meeting useful for you?" — three-point scale, stored structurally.
+enum MeetingHelpfulness {
+  YES // כן
+  SOMEWHAT // במידה מסוימת
+  NO // לא
+}
+
+// Mentee-only follow-up: "would you like to continue the mentoring process?".
+// Always NULL on a mentor's Feedback row.
+enum ContinueMentoringInterest {
+  YES // כן
+  NO // לא
+  NOT_SURE_YET // עדיין לא בטוחה
 }
 
 enum NotificationType {
-MENTORING_REQUEST_RECEIVED // mentor notified of a new request
-REQUEST_REJECTED // mentee notified of rejection
-SLOTS_AVAILABLE // mentee notified that times are ready to choose
-MEETING_MATCHED // mentor notified a slot was selected
-RESCHEDULE_REQUIRED // other participant notified rescheduling is needed
-MEETING_REMINDER // WhatsApp/in-app reminder before the meeting
-ATTENDANCE_CONFIRMATION_REQUEST // ask both sides to confirm attendance
-POST_MEETING_CHECK // ask both sides whether the meeting happened
-FEEDBACK_REMINDER // recurring reminder (every two days) to submit feedback
-MENTOR_THANK_YOU // automatic thank-you message to the mentor
+  MENTORING_REQUEST_SENT // mentee's own confirmation that her request went out
+  MENTORING_REQUEST_RECEIVED // mentor notified of a new request
+  REQUEST_REJECTED // mentee notified of rejection
+  REQUEST_CANCELLED // a participant notified the request was closed (withdraw / mentor cancel / retry exhausted)
+  SLOTS_AVAILABLE // mentee notified that times are ready to choose
+  MEETING_MATCHED // both sides notified a meeting is scheduled
+  RESCHEDULE_REQUIRED // other participant notified rescheduling / new times are needed
+  MEETING_REMINDER // WhatsApp/in-app reminder before the meeting
+  ATTENDANCE_CONFIRMATION_REQUEST // ask both sides to confirm attendance
+  POST_MEETING_CHECK // ask both sides whether the meeting happened
+  FEEDBACK_REMINDER // recurring reminder (every two days) to submit feedback
+  MENTOR_THANK_YOU // automatic thank-you message to the mentor
 }
 
 enum NotificationChannel {
-IN_APP
-WHATSAPP
+  IN_APP
+  WHATSAPP
 }
 
 enum NotificationStatus {
-PENDING
-SENT
-FAILED
+  PENDING
+  SENT
+  FAILED
 }
 
 // ----------------------------------------------------------------------------
@@ -90,45 +126,47 @@ FAILED
 // on purpose: the same person can simultaneously be a mentee (via
 // MentoringRequest.mentee), a mentor (via mentorProfile), and an admin.
 model User {
-id Int @id @default(autoincrement())
-email String @unique
-passwordHash String
-fullName String
-jobTitle String?
-workplace String?
-yearsOfExperience Int?
-profileImageUrl String?
-githubUrl String?
-linkedinUrl String?
-// Not part of the original registration requirements. Inferred solely from
-// the later requirement to send WhatsApp reminders - confirm with product
-// owner whether/when this should actually be collected.
-phoneNumber String?
-isAdmin Boolean @default(false)
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
+  id                Int      @id @default(autoincrement())
+  email             String   @unique
+  passwordHash      String
+  fullName          String
+  jobTitle          String?
+  workplace         String?
+  yearsOfExperience Int?
+  profileImageUrl   String?
+  githubUrl         String?
+  linkedinUrl       String?
+  // Not part of the original registration requirements. Inferred solely from
+  // the later requirement to send WhatsApp reminders - confirm with product
+  // owner whether/when this should actually be collected.
+  phoneNumber       String?
+  isAdmin           Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-technologies Technology[]
-mentorProfile MentorProfile?
+  technologies  Technology[]
+  mentorProfile MentorProfile?
 
-// Requests this user filed as a MENTEE. The mentor side of a request is
-// reached through MentorProfile.user, not a second direct relation here -
-// this keeps "mentee" and "mentor" from colliding into one ambiguous
-// User<->MentoringRequest relation.
-mentoringRequestsAsMentee MentoringRequest[]
+  // Requests this user filed as a MENTEE. The mentor side of a request is
+  // reached through MentorProfile.user, not a second direct relation here -
+  // this keeps "mentee" and "mentor" from colliding into one ambiguous
+  // User<->MentoringRequest relation.
+  mentoringRequestsAsMentee MentoringRequest[]
 
-attendanceConfirmations AttendanceConfirmation[]
-meetingOutcomeConfirmations MeetingOutcomeConfirmation[]
-feedbackAuthored Feedback[]
-notifications Notification[]
+  attendanceConfirmations     AttendanceConfirmation[]
+  meetingOutcomeConfirmations MeetingOutcomeConfirmation[]
+  feedbackAuthored            Feedback[]
+  notifications               Notification[]
+  // Meetings this user called off via CANNOT_ATTEND_MEETING (Part 15).
+  meetingsCancelled           Meeting[]                    @relation("MeetingCancelledBy")
 }
 
 // Extendable, normalized list of languages/technologies. Never a
 // comma-separated string on User.
 model Technology {
-id Int @id @default(autoincrement())
-name String @unique
-users User[]
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  users User[]
 }
 
 // ----------------------------------------------------------------------------
@@ -139,31 +177,31 @@ users User[]
 // Holds only mentoring-specific data; identity fields (name/email/etc.) stay
 // on User and are reached via the `user` relation.
 model MentorProfile {
-id Int @id @default(autoincrement())
-userId Int @unique
-user User @relation(fields: [userId], references: [id])
+  id     Int  @id @default(autoincrement())
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id])
 
-background String
-// Total number of meetings the mentor is willing to provide. No time
-// period (e.g. "per month") is assumed - not specified in requirements.
-meetingCapacity Int
-meetingDurationMinutes Int
+  background             String
+  // Total number of meetings the mentor is willing to provide. No time
+  // period (e.g. "per month") is assumed - not specified in requirements.
+  meetingCapacity        Int
+  meetingDurationMinutes Int
 
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-mentoringTopics MentoringTopic[]
-mentoringRequestsReceived MentoringRequest[]
+  mentoringTopics           MentoringTopic[]
+  mentoringRequestsReceived MentoringRequest[]
 }
 
 // Open-ended mentoring areas (mock interviews, career planning, a specific
 // company, etc.). A table rather than an enum so it stays extendable without
 // a schema/migration change.
 model MentoringTopic {
-id Int @id @default(autoincrement())
-name String @unique
+  id   Int    @id @default(autoincrement())
+  name String @unique
 
-mentorProfiles MentorProfile[]
+  mentorProfiles MentorProfile[]
 }
 
 // ----------------------------------------------------------------------------
@@ -175,39 +213,48 @@ mentorProfiles MentorProfile[]
 // her own MentorProfile, is intentionally not restricted here - that
 // validation belongs to backend business logic.
 model MentoringRequest {
-id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-menteeId Int
-mentee User @relation(fields: [menteeId], references: [id])
+  menteeId Int
+  mentee   User @relation(fields: [menteeId], references: [id])
 
-mentorProfileId Int
-mentorProfile MentorProfile @relation(fields: [mentorProfileId], references: [id])
+  mentorProfileId Int
+  mentorProfile   MentorProfile @relation(fields: [mentorProfileId], references: [id])
 
-status MentoringRequestStatus
+  status MentoringRequestStatus
 
-// How many times the mentee has used the CANNOT_ATTEND action to ask for
-// another round of proposed slots. Allowed range 0..2, enforced in
-// services/schedulingService.js AND by a DB CHECK constraint
-// (MentoringRequest_retryCount_range, added in migration 20260906170444).
-// ONLY CANNOT_ATTEND ever changes this value; PROPOSE_SLOTS / REJECT /
-// SELECT_SLOT / WITHDRAW / CANCEL leave it untouched. It also doubles as the
-// optimistic-concurrency token for mentee actions: a transition writes
-// conditionally on the (status, retryCount) it observed.
-retryCount Int @default(0)
+  // How many times the mentee has used the CANNOT_ATTEND action to ask for
+  // another round of proposed slots. Allowed range 0..2, enforced in
+  // services/schedulingService.js AND by a DB CHECK constraint
+  // (MentoringRequest_retryCount_range, added in migration 20260906170444).
+  // ONLY CANNOT_ATTEND ever changes this value; PROPOSE_SLOTS / REJECT /
+  // SELECT_SLOT / WITHDRAW / CANCEL leave it untouched. It also doubles as the
+  // optimistic-concurrency token for mentee actions: a transition writes
+  // conditionally on the (status, retryCount) it observed.
+  retryCount Int @default(0)
 
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
+  // Post-match rescheduling (Part 14). Once a Meeting has been scheduled
+  // (status MATCHED), EITHER participant may send the request back to
+  // WAITING_FOR_MENTOR_SLOTS exactly ONCE via the RESCHEDULE action. This flag
+  // records that the single allowed post-match rescheduling iteration has been
+  // spent; it is only ever set true (never reset) and is enforced in
+  // services/schedulingService.js (the RESCHEDULE transition's `when`). It is
+  // independent of retryCount, which governs the pre-meeting CANNOT_ATTEND rounds.
+  rescheduleAfterMatchUsed Boolean @default(false)
 
-schedulingRounds SchedulingRound[]
-// A request can go through several scheduled meeting attempts over its
-// lifetime (matched, rescheduled, no-show, matched again) - intentionally
-// one-to-many, never one-to-one.
-meetings Meeting[]
-notifications Notification[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-@@index([status])
-@@index([menteeId])
-@@index([mentorProfileId])
+  schedulingRounds SchedulingRound[]
+  // A request can go through several scheduled meeting attempts over its
+  // lifetime (matched, rescheduled, no-show, matched again) - intentionally
+  // one-to-many, never one-to-one.
+  meetings         Meeting[]
+  notifications    Notification[]
+
+  @@index([status])
+  @@index([menteeId])
+  @@index([mentorProfileId])
 }
 
 // One iteration of "mentor offers times" within a request's lifecycle.
@@ -215,161 +262,231 @@ notifications Notification[]
 // retryCount 0..2) is a backend rule in schedulingService, not enforced by
 // this table.
 model SchedulingRound {
-id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-requestId Int
-request MentoringRequest @relation(fields: [requestId], references: [id])
+  requestId Int
+  request   MentoringRequest @relation(fields: [requestId], references: [id])
 
-roundNumber Int
-type SchedulingRoundType
+  roundNumber Int
+  type        SchedulingRoundType
 
-createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-offeredSlots OfferedSlot[]
+  offeredSlots OfferedSlot[]
 
-// Prevents the same request from ever recording the same round number twice.
-@@unique([requestId, roundNumber])
+  // Prevents the same request from ever recording the same round number twice.
+  @@unique([requestId, roundNumber])
 }
 
 // Candidate time slots the mentor proposes for a round. No `isSelected` flag:
 // the chosen slot is whichever one a Meeting points to via selectedSlotId.
 model OfferedSlot {
-id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-schedulingRoundId Int
-// Slots are disposable data scoped to their round; deleting a round may
-// reasonably take its slots with it.
-schedulingRound SchedulingRound @relation(fields: [schedulingRoundId], references: [id], onDelete: Cascade)
+  schedulingRoundId Int
+  // Slots are disposable data scoped to their round; deleting a round may
+  // reasonably take its slots with it.
+  schedulingRound   SchedulingRound @relation(fields: [schedulingRoundId], references: [id], onDelete: Cascade)
 
-startTime DateTime
-endTime DateTime
+  startTime DateTime
+  endTime   DateTime
 
-createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-meeting Meeting?
+  meeting Meeting?
 
-@@index([schedulingRoundId])
+  @@index([schedulingRoundId])
 }
 
 // One scheduled attempt belonging to a request. Mentee/mentor identities are
 // never duplicated here - reach them via request.mentee and
 // request.mentorProfile.user.
 model Meeting {
-id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-requestId Int
-request MentoringRequest @relation(fields: [requestId], references: [id])
+  requestId Int
+  request   MentoringRequest @relation(fields: [requestId], references: [id])
 
-// Which offered slot the mentee picked, when this attempt came from one.
-selectedSlotId Int? @unique
-selectedSlot OfferedSlot? @relation(fields: [selectedSlotId], references: [id])
+  // Which offered slot the mentee picked, when this attempt came from one.
+  selectedSlotId Int?         @unique
+  selectedSlot   OfferedSlot? @relation(fields: [selectedSlotId], references: [id])
 
-// 1st, 2nd, ... attempt for this request (initial meeting, then any
-// reschedules), unique per request.
-attemptNumber Int
+  // 1st, 2nd, ... attempt for this request (initial meeting, then any
+  // reschedules), unique per request.
+  attemptNumber Int
 
-scheduledStart DateTime
-scheduledEnd DateTime
-status MeetingStatus
+  scheduledStart DateTime
+  scheduledEnd   DateTime
+  status         MeetingStatus
 
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
+  // Part 15: set together when this meeting is moved to CANCELLED because a
+  // participant reported she can no longer attend AND no rescheduling
+  // iteration remains. The authoritative record of who called it off, the
+  // free-text explanation for the other side, and when. NULL on every other
+  // meeting. The notification payload mirrors `cancellationReason` for display
+  // only - this row is the source of truth.
+  cancelledByUserId  Int?
+  cancelledBy        User?     @relation("MeetingCancelledBy", fields: [cancelledByUserId], references: [id])
+  cancellationReason String?
+  cancelledAt        DateTime?
 
-attendanceConfirmations AttendanceConfirmation[]
-outcomeConfirmations MeetingOutcomeConfirmation[]
-feedback Feedback[]
-notifications Notification[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-@@unique([requestId, attemptNumber])
-@@index([scheduledStart])
-@@index([status])
+  attendanceConfirmations AttendanceConfirmation[]
+  outcomeConfirmations    MeetingOutcomeConfirmation[]
+  feedback                Feedback[]
+  notifications           Notification[]
+
+  @@unique([requestId, attemptNumber])
+  @@index([scheduledStart])
+  @@index([status])
 }
 
 // One row per participant per meeting, confirming intent to attend. Whether
 // a given User is actually a participant of that specific meeting is a
 // backend check, not a schema constraint.
 model AttendanceConfirmation {
-id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-meetingId Int
-meeting Meeting @relation(fields: [meetingId], references: [id])
+  meetingId Int
+  meeting   Meeting @relation(fields: [meetingId], references: [id])
 
-userId Int
-user User @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-status AttendanceStatus
-confirmedAt DateTime?
+  status      AttendanceStatus
+  confirmedAt DateTime?
 
-createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-@@unique([meetingId, userId])
+  @@unique([meetingId, userId])
 }
 
 // One row per participant per meeting, answering "did it happen?" and,
 // if not, "do you want another attempt?". The backend combines both
 // participants' answers to decide the next status transition.
 model MeetingOutcomeConfirmation {
-id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-meetingId Int
-meeting Meeting @relation(fields: [meetingId], references: [id])
+  meetingId Int
+  meeting   Meeting @relation(fields: [meetingId], references: [id])
 
-userId Int
-user User @relation(fields: [userId], references: [id])
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
 
-occurred Boolean
-wantsReschedule Boolean?
+  occurred        Boolean
+  wantsReschedule Boolean?
 
-answeredAt DateTime @default(now())
+  answeredAt DateTime @default(now())
 
-@@unique([meetingId, userId])
+  @@unique([meetingId, userId])
 }
 
-// Free-form questionnaire answers, since the exact feedback questions are not
-// yet defined. Storing Json avoids inventing rating columns that may not
-// match the eventual questionnaire.
+// The dedicated, structured post-meeting feedback store. One row per participant
+// per meeting (mentor and mentee submit independently — never one row per
+// meeting), so their answers can never overwrite each other. The matching
+// MeetingOutcomeConfirmation row written in the same transaction is the
+// lifecycle input (it decides COMPLETED / NOT_COMPLETED); THIS table is the
+// analytics record and is kept verbatim even if the MentoringRequest later
+// changes status.
+//
+// Everything that needs to be queried later is a real column, not JSON:
+//   - "% of meetings that occurred"        -> occurred
+//   - "average rating"                     -> rating (1..5, DB CHECK)
+//   - "reasons meetings did not happen"    -> notOccurredReason
+//   - "mentor vs mentee feedback"          -> authorRole
+//   - "helpfulness"                        -> wasHelpful
+//   - "continuation interest" (mentee)     -> wouldContinueMentoring
+// Only genuinely free text stays text: notOccurredExplanation, comment.
 model Feedback {
-id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-meetingId Int
-meeting Meeting @relation(fields: [meetingId], references: [id])
+  meetingId Int
+  meeting   Meeting @relation(fields: [meetingId], references: [id])
 
-authorId Int
-author User @relation(fields: [authorId], references: [id])
+  // The participant who wrote this row. FK to the real User; @@unique with
+  // meetingId is what blocks a second submission by the same participant.
+  authorId Int
+  author   User @relation(fields: [authorId], references: [id])
 
-answers Json
+  // MENTEE / MENTOR, resolved once from the meeting's request at submit time.
+  authorRole ParticipantRole
 
-createdAt DateTime @default(now())
-updatedAt DateTime @updatedAt
+  // "האם הפגישה התקיימה?" — the first question, mirrored from the
+  // MeetingOutcomeConfirmation this submission also writes so the feedback table
+  // alone answers "what share of meetings happened".
+  occurred Boolean
 
-@@unique([meetingId, authorId])
+  // Set ONLY when occurred = false. OTHER additionally requires an explanation.
+  notOccurredReason      MeetingNonOccurrenceReason?
+  notOccurredExplanation String?
+
+  // Set ONLY when occurred = true. rating is 1..5 (Feedback_rating_range CHECK,
+  // added in the migration — Prisma does not model CHECK constraints).
+  rating                 Int?
+  wasHelpful             MeetingHelpfulness?
+  // Mentee-only question; always NULL on a mentor's row.
+  wouldContinueMentoring ContinueMentoringInterest?
+
+  // Optional short free text, either branch ("נשמח לשמוע איך היה").
+  comment String?
+
+  // When the participant actually submitted. Distinct from createdAt only so an
+  // future backfill / import could set it to the real submission time.
+  submittedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One submission per participant per meeting — the duplicate-submission guard.
+  @@unique([meetingId, authorId])
+  // Analytics access paths.
+  @@index([authorRole])
+  @@index([occurred])
+  @@index([notOccurredReason])
+  @@index([rating])
 }
 
 // History of notifications/reminders scheduled or sent to a user. A record
 // store only - no delivery, WhatsApp integration, or recurrence scheduling is
 // implemented here; that logic reads/writes rows in this table.
 model Notification {
-id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-recipientId Int
-recipient User @relation(fields: [recipientId], references: [id])
+  recipientId Int
+  recipient   User @relation(fields: [recipientId], references: [id])
 
-requestId Int?
-request MentoringRequest? @relation(fields: [requestId], references: [id])
+  requestId Int?
+  request   MentoringRequest? @relation(fields: [requestId], references: [id])
 
-meetingId Int?
-meeting Meeting? @relation(fields: [meetingId], references: [id])
+  meetingId Int?
+  meeting   Meeting? @relation(fields: [meetingId], references: [id])
 
-type NotificationType
-channel NotificationChannel
-status NotificationStatus @default(PENDING)
+  type    NotificationType
+  channel NotificationChannel
+  status  NotificationStatus  @default(PENDING)
 
-scheduledAt DateTime?
-sentAt DateTime?
-errorMessage String?
+  scheduledAt  DateTime?
+  sentAt       DateTime?
+  errorMessage String?
 
-createdAt DateTime @default(now())
+  // When the recipient opened / dismissed this notification in the in-app bell.
+  // NULL == unread. The unread badge counts rows where readAt IS NULL for the
+  // authenticated recipient.
+  readAt DateTime?
 
-@@index([status])
-@@index([scheduledAt])
+  // Small, denormalized snapshot the in-app panel needs to render a line without
+  // re-joining (e.g. { menteeName, mentorName, when }). NOT authoritative data —
+  // the status banner always reads live rows; this is display sugar only.
+  payload Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([status])
+  @@index([scheduledAt])
+  // Drives both the panel list (recipient, newest first) and the unread badge
+  // (recipient + readAt IS NULL).
+  @@index([recipientId, readAt])
+  @@index([recipientId, createdAt])
 }

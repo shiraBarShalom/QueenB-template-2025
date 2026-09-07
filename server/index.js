@@ -18,6 +18,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/users", require("./routes/users"));           // users: create / list / view / edit
 app.use("/api/mentors", require("./routes/mentors"));       // mentors: onboarding + discovery
 app.use("/api", require("./routes/requests"));              // mentoring requests: /api/requests/* + /api/mentees/:userId/requests
+app.use("/api", require("./routes/notifications"));         // in-app notifications: /api/users/:userId/notifications/*
+app.use("/api", require("./routes/postMeeting"));           // post-meeting flow: /api/meetings/:meetingId/feedback
 
 // Scheduling state machine. Mounted AFTER routes/requests.js: its sub-paths
 // (/:requestId/propose-slots, /select-slot, /cannot-attend, /withdraw, /cancel)

@@ -10,6 +10,7 @@ import {
 } from "@mui/material";
 
 import { useLanguage } from "../../../i18n/LanguageProvider";
+import fillTemplate from "../../../utils/fillTemplate";
 
 /**
  * Confirmation gate for the terminal REJECT action.
@@ -32,6 +33,9 @@ export default function ConfirmRejectDialog({
 }) {
   const { t, dir } = useLanguage();
   const c = t.app.mentorArea.reject;
+  const title = menteeName
+    ? fillTemplate(c.title, { menteeName })
+    : c.titleNoName;
 
   return (
     <Dialog
@@ -43,11 +47,10 @@ export default function ConfirmRejectDialog({
       PaperProps={{ sx: { borderRadius: "18px", p: 1, maxWidth: 420 } }}
     >
       <DialogTitle id="reject-dialog-title" sx={{ fontWeight: 800, color: "#4a1528" }}>
-        {c.title}
+        {title}
       </DialogTitle>
       <DialogContent>
         <DialogContentText id="reject-dialog-body" sx={{ color: "#6d3049", lineHeight: 1.7 }}>
-          {menteeName ? `${menteeName} — ` : ""}
           {c.body}
         </DialogContentText>
       </DialogContent>

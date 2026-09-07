@@ -3,12 +3,17 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Alert, Box, Button, Snackbar, Stack, Typography } from "@mui/material";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
+import HourglassEmptyRoundedIcon from "@mui/icons-material/HourglassEmptyRounded";
+import EventAvailableRoundedIcon from "@mui/icons-material/EventAvailableRounded";
 
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { useCurrentUser } from "../../auth/useCurrentUser";
+import fillTemplate from "../../utils/fillTemplate";
 import {
   fetchMentorDashboard,
   rejectMentoringRequest,
+  rescheduleMentoringRequest,
+  cannotAttendMeetingRequest,
 } from "../../api/mentorScheduling";
 import PageHeader from "../../components/app/PageHeader";
 import ContentCard from "../../components/app/ContentCard";
@@ -16,24 +21,33 @@ import ListContainer from "../../components/app/ListContainer";
 import EmptyState from "../../components/app/EmptyState";
 import DashboardSummary from "../../components/app/mentor/DashboardSummary";
 import IncomingRequestCard from "../../components/app/mentor/IncomingRequestCard";
+import AwaitingSelectionCard from "../../components/app/mentor/AwaitingSelectionCard";
+import ScheduledMeetingCard from "../../components/app/mentor/ScheduledMeetingCard";
 import ConfirmRejectDialog from "../../components/app/mentor/ConfirmRejectDialog";
+import ConfirmDialog from "../../components/app/mentee/ConfirmDialog";
+import CannotAttendMeetingDialog from "../../components/app/CannotAttendMeetingDialog";
 
 /**
- * `/app/mentor-area` — the logged-in mentor's personal scheduling dashboard
- * (Part 2). It shows:
- *   1. a small summary strip of counts derived from the request statuses
- *   2. the requests currently waiting for her (WAITING_FOR_MENTOR_SLOTS)
+ * `/app/mentor-area` — the logged-in mentor's personal scheduling dashboard.
  *
- * Per incoming request she can Decline (terminal REJECT, gated by a confirm
- * dialog) or go to Propose times (Part 3 entry point). The scheduling state
- * machine lives entirely on the server — this page only calls it and then
- * re-reads the dashboard to reconcile.
+ * The three summary tiles are FILTERS: clicking one switches the section below.
+ *   waitingForResponse      -> WAITING_FOR_MENTOR_SLOTS   (actionable: propose / reject)
+ *   awaitingMenteeSelection -> WAITING_FOR_MENTEE_SELECTION (slots already proposed)
+ *   scheduledMeetings       -> MATCHED                    (a Meeting exists)
  *
- * Identity: the mentor is taken from useCurrentUser() (the app's auth seam),
- * never from a value typed in the UI. `mentorProfileId` reads the dashboard;
- * `id` is sent as `actingUserId` for the reject action and is validated
- * server-side against the request's assigned mentor.
+ * All three lists come from one read-only endpoint
+ * (GET /api/mentors/:id/dashboard -> requestService.getMentorDashboard); the
+ * counts and the rows are the same query, so a non-zero count always has rows
+ * behind it. The scheduling state machine stays entirely on the server — this
+ * page only calls REJECT and then re-reads to reconcile.
+ *
+ * Identity comes from useCurrentUser() (the auth seam), never from the UI:
+ * `mentorProfileId` reads the dashboard; `id` is the `actingUserId` the server
+ * validates against the request's assigned mentor.
  */
+const PANEL_ID = "mentor-section-panel";
+const DEFAULT_TAB = "waitingForResponse";
+
 export default function MentorAreaPage() {
   const { t } = useLanguage();
   const c = t.app.mentorArea;
@@ -43,10 +57,15 @@ export default function MentorAreaPage() {
 
   const [phase, setPhase] = useState("loading"); // "loading" | "ready" | "error"
   const [errorKind, setErrorKind] = useState(null); // "noProfile" | "load"
-  const [data, setData] = useState(null); // { counts, incomingRequests }
+  const [data, setData] = useState(null);
+  const [activeTab, setActiveTab] = useState(DEFAULT_TAB);
 
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejecting, setRejecting] = useState(false);
+  const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [rescheduling, setRescheduling] = useState(false);
+  const [cannotAttendTarget, setCannotAttendTarget] = useState(null);
+  const [cannotAttending, setCannotAttending] = useState(false);
   const [toast, setToast] = useState(null); // { severity, message }
 
   const load = useCallback(
@@ -78,13 +97,12 @@ export default function MentorAreaPage() {
     load();
   }, [load]);
 
-  // One-shot success feedback after ProposeSlotsPage navigates back here. The
-  // dashboard re-read above already reflects the new WAITING_FOR_MENTEE_SELECTION
-  // state; this only surfaces the confirmation. Clear the nav state so a manual
-  // refresh doesn't replay it.
+  // One-shot success feedback after ProposeSlotsPage navigates back here, then
+  // jump to the section where the request now lives so the mentor sees it move.
   useEffect(() => {
     if (location.state && location.state.flash === "slotsProposed") {
       setToast({ severity: "success", message: c.proposeSlots.successFlash });
+      setActiveTab("awaitingMenteeSelection");
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.state, location.pathname, navigate, c.proposeSlots.successFlash]);
@@ -118,13 +136,11 @@ export default function MentorAreaPage() {
       load({ silent: true });
     } catch (err) {
       if (err.status === 409) {
-        // The request moved on (mentor proposed elsewhere / mentee withdrew /
-        // already rejected). Do not fake success — reconcile from the server.
+        // The request moved on. Do not fake success — reconcile from the server.
         setRejectTarget(null);
         setToast({ severity: "warning", message: c.reject.conflict });
         load({ silent: true });
       } else {
-        // Keep the dialog open so she can retry or cancel.
         setToast({ severity: "error", message: c.reject.error });
       }
     } finally {
@@ -132,57 +148,197 @@ export default function MentorAreaPage() {
     }
   };
 
+  const openReschedule = (request) => setRescheduleTarget(request);
+  const closeReschedule = () => {
+    if (!rescheduling) setRescheduleTarget(null);
+  };
+
+  const confirmReschedule = async () => {
+    if (rescheduling || !rescheduleTarget) return; // guard against a double submit
+    const targetId = rescheduleTarget.id;
+    setRescheduling(true);
+    try {
+      await rescheduleMentoringRequest(targetId, actingUserId);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              counts: {
+                ...prev.counts,
+                scheduledMeetings: Math.max(0, prev.counts.scheduledMeetings - 1),
+                waitingForResponse: prev.counts.waitingForResponse + 1,
+              },
+              scheduledRequests: (prev.scheduledRequests || []).filter(
+                (r) => r.id !== targetId
+              ),
+            }
+          : prev
+      );
+      setRescheduleTarget(null);
+      setToast({ severity: "success", message: c.reschedule.success });
+      setActiveTab("waitingForResponse");
+      load({ silent: true });
+    } catch (err) {
+      if (err.status === 409) {
+        setRescheduleTarget(null);
+        setToast({ severity: "warning", message: c.reschedule.conflict });
+        load({ silent: true });
+      } else {
+        setToast({ severity: "error", message: c.reschedule.error });
+      }
+    } finally {
+      setRescheduling(false);
+    }
+  };
+
+  const openCannotAttend = (request) => setCannotAttendTarget(request);
+  const closeCannotAttend = () => {
+    if (!cannotAttending) setCannotAttendTarget(null);
+  };
+
+  // Part 15: the reschedule is spent — the mentor cannot attend, so end the
+  // request and message the mentee. Distinct terminal action, NOT a reschedule.
+  const confirmCannotAttend = async (reason) => {
+    if (cannotAttending || !cannotAttendTarget) return; // guard against a double submit
+    const targetId = cannotAttendTarget.id;
+    setCannotAttending(true);
+    try {
+      await cannotAttendMeetingRequest(targetId, actingUserId, reason);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              counts: {
+                ...prev.counts,
+                scheduledMeetings: Math.max(0, prev.counts.scheduledMeetings - 1),
+              },
+              scheduledRequests: (prev.scheduledRequests || []).filter(
+                (r) => r.id !== targetId
+              ),
+            }
+          : prev
+      );
+      setCannotAttendTarget(null);
+      setToast({ severity: "success", message: c.cannotAttendMeeting.success });
+      load({ silent: true });
+    } catch (err) {
+      if (err.status === 409) {
+        setCannotAttendTarget(null);
+        setToast({ severity: "warning", message: c.cannotAttendMeeting.conflict });
+        load({ silent: true });
+      } else {
+        // 400 / 403 / network — keep the dialog open so she can fix or cancel.
+        setToast({ severity: "error", message: c.cannotAttendMeeting.error });
+      }
+    } finally {
+      setCannotAttending(false);
+    }
+  };
+
   const loading = phase === "loading";
-  const requests = data ? data.incomingRequests : [];
+
+  const sections = {
+    waitingForResponse: {
+      title: c.incoming.title,
+      subtitle: c.incoming.subtitle,
+      items: data ? data.incomingRequests : [],
+      empty: {
+        icon: MarkEmailReadRoundedIcon,
+        title: c.incoming.emptyTitle,
+        hint: c.incoming.emptyHint,
+      },
+      render: (r) => (
+        <IncomingRequestCard
+          key={r.id}
+          request={r}
+          busy={rejecting && rejectTarget?.id === r.id}
+          onReject={openReject}
+        />
+      ),
+    },
+    awaitingMenteeSelection: {
+      title: c.sections.awaitingSelection.title,
+      subtitle: c.sections.awaitingSelection.subtitle,
+      items: data ? data.awaitingSelectionRequests || [] : [],
+      empty: {
+        icon: HourglassEmptyRoundedIcon,
+        title: c.sections.awaitingSelection.emptyTitle,
+        hint: c.sections.awaitingSelection.emptyHint,
+      },
+      render: (r) => <AwaitingSelectionCard key={r.id} request={r} />,
+    },
+    scheduledMeetings: {
+      title: c.sections.scheduled.title,
+      subtitle: c.sections.scheduled.subtitle,
+      items: data ? data.scheduledRequests || [] : [],
+      empty: {
+        icon: EventAvailableRoundedIcon,
+        title: c.sections.scheduled.emptyTitle,
+        hint: c.sections.scheduled.emptyHint,
+      },
+      render: (r) => (
+        <ScheduledMeetingCard
+          key={r.id}
+          request={r}
+          busy={
+            (rescheduling && rescheduleTarget?.id === r.id) ||
+            (cannotAttending && cannotAttendTarget?.id === r.id)
+          }
+          onReschedule={openReschedule}
+          onCannotAttend={openCannotAttend}
+        />
+      ),
+    },
+  };
+  const section = sections[activeTab] || sections[DEFAULT_TAB];
 
   return (
     <Box>
       <PageHeader title={c.title} description={c.description} />
 
       <Stack spacing={{ xs: 2.5, md: 3 }}>
-        <DashboardSummary counts={data ? data.counts : null} loading={loading} />
+        <DashboardSummary
+          counts={data ? data.counts : null}
+          loading={loading}
+          activeKey={activeTab}
+          onSelect={setActiveTab}
+          panelId={PANEL_ID}
+        />
 
-        <ContentCard title={c.incoming.title}>
-          <Typography sx={{ mt: -1, mb: 2, fontSize: "0.9rem", color: "#6d3049" }}>
-            {c.incoming.subtitle}
-          </Typography>
+        <Box id={PANEL_ID} role="region" aria-label={section.title} aria-live="polite">
+          <ContentCard title={section.title}>
+            <Typography sx={{ mt: -1, mb: 2, fontSize: "0.9rem", color: "#6d3049" }}>
+              {section.subtitle}
+            </Typography>
 
-          {phase === "error" ? (
-            <EmptyState
-              icon={ErrorOutlineRoundedIcon}
-              title={
-                errorKind === "noProfile" ? c.incoming.noProfile : c.incoming.loadError
-              }
-              action={
-                errorKind === "load" ? (
-                  <Button variant="outlined" onClick={() => load()}>
-                    {c.incoming.retry}
-                  </Button>
-                ) : null
-              }
-            />
-          ) : (
-            <ListContainer
-              loading={loading}
-              skeletonCount={2}
-              isEmpty={phase === "ready" && requests.length === 0}
-              empty={{
-                icon: MarkEmailReadRoundedIcon,
-                title: c.incoming.emptyTitle,
-                hint: c.incoming.emptyHint,
-              }}
-            >
-              {requests.map((request) => (
-                <IncomingRequestCard
-                  key={request.id}
-                  request={request}
-                  busy={rejecting && rejectTarget?.id === request.id}
-                  onReject={openReject}
-                />
-              ))}
-            </ListContainer>
-          )}
-        </ContentCard>
+            {phase === "error" ? (
+              <EmptyState
+                icon={ErrorOutlineRoundedIcon}
+                title={
+                  errorKind === "noProfile"
+                    ? c.incoming.noProfile
+                    : c.incoming.loadError
+                }
+                action={
+                  errorKind === "load" ? (
+                    <Button variant="outlined" onClick={() => load()}>
+                      {c.incoming.retry}
+                    </Button>
+                  ) : null
+                }
+              />
+            ) : (
+              <ListContainer
+                loading={loading}
+                skeletonCount={2}
+                isEmpty={phase === "ready" && section.items.length === 0}
+                empty={section.empty}
+              >
+                {section.items.map((item) => section.render(item))}
+              </ListContainer>
+            )}
+          </ContentCard>
+        </Box>
       </Stack>
 
       <ConfirmRejectDialog
@@ -191,6 +347,28 @@ export default function MentorAreaPage() {
         pending={rejecting}
         onCancel={closeReject}
         onConfirm={confirmReject}
+      />
+
+      <ConfirmDialog
+        open={Boolean(rescheduleTarget)}
+        title={c.reschedule.title}
+        body={fillTemplate(c.reschedule.body, {
+          menteeName: rescheduleTarget?.mentee?.fullName || "",
+        })}
+        confirmLabel={rescheduling ? c.reschedule.pending : c.reschedule.confirm}
+        cancelLabel={c.reschedule.cancel}
+        confirmColor="error"
+        pending={rescheduling}
+        onCancel={closeReschedule}
+        onConfirm={confirmReschedule}
+      />
+
+      <CannotAttendMeetingDialog
+        open={Boolean(cannotAttendTarget)}
+        copy={c.cannotAttendMeeting}
+        pending={cannotAttending}
+        onCancel={closeCannotAttend}
+        onConfirm={confirmCannotAttend}
       />
 
       <Snackbar
