@@ -58,11 +58,14 @@ app.use(
   })
 );
 
-// Routes (one file per domain, one dev per file — see README for ownership)
+// Routes (one file per domain)
 app.use("/api/users", require("./routes/users"));           // Domain 1: Auth & Profiles
 app.use("/api/mentors", require("./routes/mentors"));       // Domain 2: Discovery & Requests
-app.use("/api/requests", require("./routes/scheduling"));   // Domain 3: Scheduling & Statuses
+app.use("/api", require("./routes/requests"));              // mentoring requests from main
 app.use("/api/admin", require("./routes/admin"));            // Domain 4: Administration
+
+// Scheduling stubs stay unmounted so Prisma request routes own /api/requests.
+// app.use("/api/requests", require("./routes/scheduling"));
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

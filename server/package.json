@@ -11,9 +11,13 @@
     "db:migrate": "node scripts/migrate.js",
     "db:verify": "node scripts/verify-migration.js",
     "admin:create": "node scripts/create-admin.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
     "test": "node --test --test-concurrency=1"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "argon2": "^0.45.1",
     "connect-pg-simple": "^10.0.0",
     "cors": "^2.8.6",
@@ -24,12 +28,13 @@
     "helmet": "^7.2.0",
     "morgan": "^1.12.0",
     "pg": "^8.23.0",
+    "prisma": "^6.19.3",
     "readline-sync": "^1.4.10",
     "resend": "^6.26.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "nodemon": "^3.0.2",
+    "nodemon": "^3.1.14",
     "supertest": "^7.2.2"
   },
   "overrides": {
