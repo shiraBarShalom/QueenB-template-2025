@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Alert, Button, Snackbar, Typography } from "@mui/material";
+import { Alert, Box, Button, Snackbar, Stack, Typography } from "@mui/material";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
 import EventNoteRoundedIcon from "@mui/icons-material/EventNoteRounded";
 
@@ -25,17 +25,16 @@ import MenteeRequestStatusCard from "./MenteeRequestStatusCard";
 import ConfirmDialog from "./ConfirmDialog";
 
 /**
- * Self-contained scheduling block for the mentee's Personal Area (Part 4).
+ * Self-contained scheduling block for the mentee's Personal Area (Part 4+).
  *
- * Additive and isolated: PersonalAreaPage mounts this as one more <ContentCard>
- * and nothing else in that page changes. It reads
- * GET /api/mentees/:userId/scheduling (a read-only projection) and drives the
- * three Part 1 actions through their existing POST routes:
- *   SELECT_SLOT     -> MATCHED + Meeting          (server does the transition)
- *   CANNOT_ATTEND   -> new round (retryCount < 2) OR CANCELLED (retryCount == 2)
- *   WITHDRAW        -> CANCELLED                   (terminal)
- * The frontend never computes or mutates status; after every action it re-reads
- * the projection to reconcile, and a 409/404/403 never fakes success.
+ * PersonalAreaPage mounts this as the scheduling ContentCard. It reads
+ * GET /api/mentees/:userId/scheduling and groups rows into pending / scheduled /
+ * past. Mutations go through existing POST routes; the frontend never computes
+ * status. After every action it re-reads the projection; 409/404/403 never fake
+ * success.
+ *
+ * MATCHED meetings offer two independent actions:
+ *   RESCHEDULE (once) and CANNOT_ATTEND_MEETING (cancel with reason, anytime).
  */
 const FINAL_RETRY = 2;
 
@@ -240,13 +239,24 @@ export default function MenteeSchedulingSection() {
   };
 
   const loading = phase === "loading";
-  // Actionable first, then scheduled, then informational (waiting / closed).
+  // Pending (needs action or waiting on mentor), scheduled, then past/cancelled.
   const proposals = items.filter((i) => i.status === "WAITING_FOR_MENTEE_SELECTION");
-  const matched = items.filter((i) => i.status === "MATCHED");
   const waiting = items.filter((i) => i.status === "WAITING_FOR_MENTOR_SLOTS");
+  const matched = items.filter((i) => i.status === "MATCHED");
   const closed = items.filter(
     (i) => i.status === "REJECTED" || i.status === "CANCELLED"
   );
+  const pending = [...proposals, ...waiting];
+  const sections = c.sections || {};
+
+  const sectionHeadingSx = {
+    fontSize: "0.8rem",
+    fontWeight: 800,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "#b05a75",
+    mb: 1,
+  };
 
   return (
     <ContentCard title={c.title}>
@@ -275,31 +285,60 @@ export default function MenteeSchedulingSection() {
             hint: c.emptyHint,
           }}
         >
-          {proposals.map((r) => (
-            <ProposedSlotsCard
-              key={r.id}
-              request={r}
-              disabled={submitting}
-              onSelectSlot={(slotId) => askSelect(r, slotId)}
-              onCannotAttend={() => askCannotAttend(r)}
-              onWithdraw={() => askWithdraw(r)}
-            />
-          ))}
-          {matched.map((r) => (
-            <MenteeMeetingCard
-              key={r.id}
-              request={r}
-              disabled={submitting}
-              onReschedule={() => askReschedule(r)}
-              onCannotAttend={() => askCannotAttendMeeting(r)}
-            />
-          ))}
-          {waiting.map((r) => (
-            <MenteeRequestStatusCard key={r.id} request={r} />
-          ))}
-          {closed.map((r) => (
-            <MenteeRequestStatusCard key={r.id} request={r} />
-          ))}
+          {pending.length > 0 && (
+            <Box>
+              <Typography sx={sectionHeadingSx}>
+                {sections.pending || "Pending"}
+              </Typography>
+              <Stack spacing={1.5}>
+                {proposals.map((r) => (
+                  <ProposedSlotsCard
+                    key={r.id}
+                    request={r}
+                    disabled={submitting}
+                    onSelectSlot={(slotId) => askSelect(r, slotId)}
+                    onCannotAttend={() => askCannotAttend(r)}
+                    onWithdraw={() => askWithdraw(r)}
+                  />
+                ))}
+                {waiting.map((r) => (
+                  <MenteeRequestStatusCard key={r.id} request={r} />
+                ))}
+              </Stack>
+            </Box>
+          )}
+
+          {matched.length > 0 && (
+            <Box>
+              <Typography sx={sectionHeadingSx}>
+                {sections.scheduled || "Scheduled"}
+              </Typography>
+              <Stack spacing={1.5}>
+                {matched.map((r) => (
+                  <MenteeMeetingCard
+                    key={r.id}
+                    request={r}
+                    disabled={submitting}
+                    onReschedule={() => askReschedule(r)}
+                    onCannotAttend={() => askCannotAttendMeeting(r)}
+                  />
+                ))}
+              </Stack>
+            </Box>
+          )}
+
+          {closed.length > 0 && (
+            <Box>
+              <Typography sx={sectionHeadingSx}>
+                {sections.past || "Past"}
+              </Typography>
+              <Stack spacing={1.5}>
+                {closed.map((r) => (
+                  <MenteeRequestStatusCard key={r.id} request={r} />
+                ))}
+              </Stack>
+            </Box>
+          )}
         </ListContainer>
       )}
 

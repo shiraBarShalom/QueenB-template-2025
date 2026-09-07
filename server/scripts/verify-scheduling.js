@@ -378,14 +378,30 @@ async function main() {
     (await prisma.mentoringRequest.findUnique({ where: { id }, select: { rescheduleAfterMatchUsed: true } }))
       .rescheduleAfterMatchUsed;
 
-  // 18a — mentor cannot attend, ending direction
+  // 18a0 — direct cancel before any reschedule (mentee)
   {
     const id = await toMatched();
-    await expectStatus(
-      "CANNOT_ATTEND_MEETING before reschedule used -> 409",
-      () => sched.cannotAttendMeeting(id, MENTEE, "Perfectly valid reason text here."),
-      409
-    );
+    assert("flag starts false", (await reschedUsed(id)) === false);
+    const REASON = "Perfectly valid reason text here for a direct cancel.";
+    await sched.cannotAttendMeeting(id, MENTEE, REASON);
+    assert("direct cancel -> request CANCELLED", (await statusOf(id)) === "CANCELLED");
+    assert("direct cancel does not spend reschedule flag", (await reschedUsed(id)) === false);
+    const active = await prisma.meeting.findFirst({ where: { requestId: id }, orderBy: { attemptNumber: "desc" } });
+    assert("direct cancel stamps meeting CANCELLED",
+      active.status === "CANCELLED" &&
+      active.cancelledByUserId === MENTEE &&
+      active.cancellationReason === REASON);
+    const notif = await prisma.notification.findFirst({
+      where: { requestId: id, type: "REQUEST_CANCELLED" }, orderBy: { createdAt: "desc" },
+    });
+    assert("mentor notified on direct mentee cancel",
+      notif && notif.recipientId === MENTOR && notif.payload.byMentor === false &&
+      notif.payload.explanation === REASON);
+  }
+
+  // 18a — reschedule once, rematch, then mentor cancel + auth/validation
+  {
+    const id = await toMatched();
 
     await sched.reschedule(id, MENTEE);
     assert("first RESCHEDULE -> WAITING_FOR_MENTOR_SLOTS + flag set",
@@ -411,7 +427,7 @@ async function main() {
 
     const REASON = "I was pulled into an unavoidable on-call incident tonight, so sorry.";
     await sched.cannotAttendMeeting(id, MENTOR, REASON);
-    assert("cannot-attend-meeting -> request CANCELLED", (await statusOf(id)) === "CANCELLED");
+    assert("cannot-attend-meeting after reschedule -> request CANCELLED", (await statusOf(id)) === "CANCELLED");
 
     const meetings = await prisma.meeting.findMany({ where: { requestId: id }, orderBy: { attemptNumber: "asc" } });
     assert("history preserved: 2 meetings, older still RESCHEDULED",
@@ -437,7 +453,7 @@ async function main() {
       () => sched.cannotAttendMeeting(id, MENTOR, REASON), 409);
   }
 
-  // 18b — mentee cannot attend (other direction: mentor is notified)
+  // 18b — mentee cannot attend after a reschedule cycle (mentor notified)
   {
     const id = await toMatched();
     await sched.reschedule(id, MENTOR);
@@ -449,7 +465,7 @@ async function main() {
 
     const REASON = "A work deadline moved and I now have to be in the office that evening.";
     await sched.cannotAttendMeeting(id, MENTEE, REASON);
-    assert("mentee direction -> CANCELLED", (await statusOf(id)) === "CANCELLED");
+    assert("mentee direction after reschedule -> CANCELLED", (await statusOf(id)) === "CANCELLED");
     const active = await prisma.meeting.findFirst({ where: { requestId: id }, orderBy: { attemptNumber: "desc" } });
     assert("active meeting CANCELLED by mentee", active.status === "CANCELLED" && active.cancelledByUserId === MENTEE);
     const notif = await prisma.notification.findFirst({
@@ -460,15 +476,9 @@ async function main() {
       notif.payload.explanation === REASON);
   }
 
-  // 18c — concurrent duplicate CANNOT_ATTEND_MEETING: exactly one wins
+  // 18c — concurrent duplicate CANNOT_ATTEND_MEETING on first match: exactly one wins
   {
     const id = await toMatched();
-    await sched.reschedule(id, MENTEE);
-    await sched.proposeSlots(id, MENTOR, futureSlots(2));
-    const round = await prisma.schedulingRound.findFirst({
-      where: { requestId: id }, orderBy: { roundNumber: "desc" }, include: { offeredSlots: true },
-    });
-    await sched.selectSlot(id, MENTEE, round.offeredSlots[0].id);
     const results = await Promise.allSettled([
       sched.cannotAttendMeeting(id, MENTOR, "Reason from the mentor side, long enough."),
       sched.cannotAttendMeeting(id, MENTEE, "Reason from the mentee side, long enough."),

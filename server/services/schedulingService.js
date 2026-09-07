@@ -69,10 +69,10 @@ const ACTION = {
   // Part 14: a meeting is already scheduled (MATCHED) but one side can no longer
   // attend. EITHER participant may send the request back into scheduling, ONCE.
   RESCHEDULE: "RESCHEDULE",
-  // Part 15: a meeting is scheduled (MATCHED), the single post-match reschedule
-  // was ALREADY used (rescheduleAfterMatchUsed === true), and a participant still
-  // cannot attend. EITHER participant ends the request; the Meeting is cancelled
-  // with a recorded reason. NOT a reschedule - no new round is opened.
+  // Part 15: a meeting is scheduled (MATCHED) and a participant cannot attend.
+  // EITHER participant may end the request (with a recorded reason) at any time
+  // while MATCHED — including before the one post-match RESCHEDULE has been used.
+  // NOT a reschedule: no new round is opened; the Meeting is cancelled.
   CANNOT_ATTEND_MEETING: "CANNOT_ATTEND_MEETING",
 };
 
@@ -213,18 +213,17 @@ const TRANSITIONS = [
     bumpsRetryCount: false,
   },
 
-  // Post-match, RESCHEDULE already spent (Part 15). A participant cannot attend
-  // the scheduled meeting and there is no rescheduling iteration left, so the
-  // request ends here. cannotAttendMeeting() also flips the scheduled Meeting to
-  // CANCELLED (recording who / why / when) and notifies the other participant.
-  // Guarded on rescheduleAfterMatchUsed === true so this action is illegal while
-  // RESCHEDULE is still the correct path (the two are mutually exclusive).
-  // MATCHED + (mentor|mentee) CANNOT_ATTEND_MEETING [rescheduleAfterMatchUsed] -> CANCELLED
+  // Post-match cancel (Part 15). A participant cannot attend the scheduled
+  // meeting and chooses to end it (with a reason) rather than reschedule.
+  // Available whenever MATCHED — independent of rescheduleAfterMatchUsed so
+  // cancel is never blocked behind the one-reschedule option. RESCHEDULE keeps
+  // its own once-only `when`. cannotAttendMeeting() flips the Meeting to
+  // CANCELLED (who / why / when) and notifies the other participant.
+  // MATCHED + (mentor|mentee) CANNOT_ATTEND_MEETING -> CANCELLED
   {
     action: ACTION.CANNOT_ATTEND_MEETING,
     from: STATUS.MATCHED,
     role: ROLE.MENTOR,
-    when: (r) => r.rescheduleAfterMatchUsed,
     to: STATUS.CANCELLED,
     bumpsRetryCount: false,
   },
@@ -232,7 +231,6 @@ const TRANSITIONS = [
     action: ACTION.CANNOT_ATTEND_MEETING,
     from: STATUS.MATCHED,
     role: ROLE.MENTEE,
-    when: (r) => r.rescheduleAfterMatchUsed,
     to: STATUS.CANCELLED,
     bumpsRetryCount: false,
   },
@@ -773,8 +771,8 @@ function reschedule(requestId, actingUserId) {
 }
 
 // ----------------------------------------------------------------------------
-// CANNOT_ATTEND_MEETING — a participant cannot attend the scheduled meeting and
-// no rescheduling iteration remains (Part 15).
+// CANNOT_ATTEND_MEETING — a participant cancels an already-scheduled meeting
+// (Part 15). Independent of the one-reschedule limit.
 // ----------------------------------------------------------------------------
 
 // A reason for the other side is REQUIRED. Trimmed, with a sane length window so
@@ -799,7 +797,7 @@ function normalizeCannotAttendReason(raw) {
   return reason;
 }
 
-// MATCHED + (mentor|mentee) CANNOT_ATTEND_MEETING [rescheduleAfterMatchUsed] -> CANCELLED.
+// MATCHED + (mentor|mentee) CANNOT_ATTEND_MEETING -> CANCELLED.
 // In the same transaction as the status flip:
 //   - the current SCHEDULED Meeting is moved to CANCELLED and stamped with
 //     cancelledByUserId / cancellationReason / cancelledAt (the authoritative
@@ -808,8 +806,8 @@ function normalizeCannotAttendReason(raw) {
 //   - the OTHER participant gets a REQUEST_CANCELLED notification whose payload
 //     carries `reason: "cannotAttendMeeting"`, `byMentor`, and the free-text
 //     `explanation` for display.
-// Distinct from RESCHEDULE (which opens a new round) and from mentorCancel
-// (mentor-only, no reason, not gated on rescheduleAfterMatchUsed).
+// Distinct from RESCHEDULE (which opens a new round and spends the one-time
+// flag) and from mentorCancel (mentor-only, no reason required).
 function cannotAttendMeeting(requestId, actingUserId, rawReason) {
   const reason = normalizeCannotAttendReason(rawReason);
 

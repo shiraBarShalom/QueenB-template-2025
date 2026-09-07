@@ -110,12 +110,13 @@ export async function rescheduleMentoringRequest(requestId, actingUserId) {
 
 /**
  * POST /api/requests/:requestId/cannot-attend-meeting   Body: { actingUserId, reason }
- * Part 15 — the mentor cannot attend the scheduled meeting and the single
- * post-match reschedule was ALREADY used. schedulingService.cannotAttendMeeting:
- * MATCHED -> CANCELLED, Meeting -> CANCELLED (with who/why/when), and the mentee
- * is notified with the reason. NOT a reschedule.
+ * Part 15 — the mentor cancels a scheduled meeting (reason required). Available
+ * whether or not the single post-match reschedule has been used.
+ * schedulingService.cannotAttendMeeting: MATCHED -> CANCELLED, Meeting ->
+ * CANCELLED (with who/why/when), and the mentee is notified with the reason.
+ * NOT a reschedule.
  *   400 reason missing / too short / too long · 403 wrong actor ·
- *   409 not MATCHED / reschedule not yet used / no scheduled meeting / CAS.
+ *   409 not MATCHED / no scheduled meeting / CAS.
  */
 export async function cannotAttendMeetingRequest(requestId, actingUserId, reason) {
   try {

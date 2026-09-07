@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Button, Stack, Typography } from "@mui/material";
 import EventBusyRoundedIcon from "@mui/icons-material/EventBusyRounded";
+import UpdateRoundedIcon from "@mui/icons-material/UpdateRounded";
 
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import { formatDayLabel, formatTimeRange } from "../../../utils/slotTime";
@@ -12,10 +13,9 @@ import MenteeIdentity from "./MenteeIdentity";
  * exists. Mostly informational (mentee, scheduled date/time from
  * Meeting.scheduledStart / scheduledEnd, meeting status).
  *
- * Part 14: when `request.canReschedule` (the single post-match rescheduling has
- * not been used) the mentor can say "this time no longer works for me". The
- * parent confirms and calls POST /api/requests/:id/reschedule; the request then
- * returns to "awaiting your reply" for a fresh set of times.
+ * Part 14/15: when the meeting is SCHEDULED, two independent actions may appear:
+ *   - Reschedule (once) when `request.canReschedule` — POST .../reschedule
+ *   - Cancel (anytime, reason required) — POST .../cannot-attend-meeting
  */
 const MEETING_STATUS_KEY = {
   SCHEDULED: "scheduled",
@@ -46,6 +46,9 @@ export default function ScheduledMeetingCard({
   }
 
   const statusKey = meeting ? MEETING_STATUS_KEY[meeting.status] || "neutral" : "neutral";
+  const isScheduled = meeting && meeting.status === "SCHEDULED";
+  const showReschedule = isScheduled && request.canReschedule && onReschedule;
+  const showCancel = isScheduled && onCannotAttend;
 
   return (
     <Box
@@ -69,28 +72,26 @@ export default function ScheduledMeetingCard({
         {when}
       </Typography>
 
-      {request.canReschedule && onReschedule ? (
-        <Stack direction={{ xs: "column", sm: "row" }} sx={{ mt: 2 }} justifyContent="flex-end">
-          <Button
-            onClick={() => onReschedule(request)}
-            disabled={busy}
-            variant="text"
-            color="error"
-            startIcon={<EventBusyRoundedIcon />}
-            sx={{ minHeight: 44, fontWeight: 700 }}
-          >
-            {c.rescheduleCta}
-          </Button>
-        </Stack>
-      ) : (
-        // MATCHED, the single post-match reschedule is spent, but the mentor
-        // still needs a way to report she cannot attend the scheduled meeting.
-        // This does NOT reschedule — it cancels the meeting and ends the request.
-        !request.canReschedule &&
-        onCannotAttend &&
-        meeting &&
-        meeting.status === "SCHEDULED" && (
-          <Stack direction={{ xs: "column", sm: "row" }} sx={{ mt: 2 }} justifyContent="flex-end">
+      {(showReschedule || showCancel) && (
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1}
+          sx={{ mt: 2 }}
+          justifyContent="flex-end"
+        >
+          {showReschedule && (
+            <Button
+              onClick={() => onReschedule(request)}
+              disabled={busy}
+              variant="text"
+              color="primary"
+              startIcon={<UpdateRoundedIcon />}
+              sx={{ minHeight: 44, fontWeight: 700 }}
+            >
+              {c.rescheduleCta}
+            </Button>
+          )}
+          {showCancel && (
             <Button
               onClick={() => onCannotAttend(request)}
               disabled={busy}
@@ -101,8 +102,8 @@ export default function ScheduledMeetingCard({
             >
               {c.cannotAttendMeetingCta}
             </Button>
-          </Stack>
-        )
+          )}
+        </Stack>
       )}
     </Box>
   );

@@ -131,13 +131,14 @@ router.post("/:requestId/reschedule", async (req, res) => {
 
 // POST /api/requests/:requestId/cannot-attend-meeting
 // Body: { actingUserId, reason }
-// Part 15 — a participant (mentor OR mentee) cannot attend the scheduled meeting
-// and the single post-match reschedule was ALREADY used. Ends the request:
-// Meeting -> CANCELLED (with who/why/when), MentoringRequest -> CANCELLED, and
-// the other participant is notified with the free-text reason. NOT a reschedule.
+// Part 15 — a participant (mentor OR mentee) cancels a scheduled meeting
+// directly (reason required). Independent of the one-reschedule limit.
+// Ends the request: Meeting -> CANCELLED (with who/why/when), MentoringRequest
+// -> CANCELLED, and the other participant is notified with the free-text reason.
+// NOT a reschedule.
 //   MATCHED -> CANCELLED
 //   400 missing / too short / too long reason · 403 not a participant ·
-//   409 not MATCHED / reschedule not yet used / no scheduled meeting / CAS.
+//   409 not MATCHED / no scheduled meeting / CAS.
 router.post("/:requestId/cannot-attend-meeting", async (req, res) => {
   try {
     const request = await schedulingService.cannotAttendMeeting(

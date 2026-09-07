@@ -208,6 +208,11 @@ export const translations = {
           retry: "נסי שוב",
           emptyTitle: "אין כרגע מה לתאם",
           emptyHint: "כשמנטורית תציע לך מועדים לפגישה, הם יופיעו כאן.",
+          sections: {
+            pending: "בקשות ממתינות",
+            scheduled: "פגישות מתוזמנות",
+            past: "בוטלו / הסתיימו",
+          },
           proposed: {
             chip: "לבחירתך",
             roundLabel: "סבב הצעות {round} מתוך 3",
@@ -222,8 +227,8 @@ export const translations = {
           matched: {
             chipFallback: "נקבעה",
             whenLabel: "מועד הפגישה",
-            rescheduleCta: "המועד הזה לא מסתדר לי",
-            cannotAttendMeetingCta: "לא אוכל להגיע לפגישה",
+            rescheduleCta: "תאמי מחדש",
+            cannotAttendMeetingCta: "בטלי פגישה",
             rescheduledNote: "הפגישה הקודמת בוטלה — המנטורית תציע מועד חדש.",
           },
           statuses: {
@@ -244,16 +249,16 @@ export const translations = {
             },
           },
           confirmReschedule: {
-            title: "אי אפשר להגיע לפגישה?",
+            title: "לתאם מחדש את הפגישה?",
             body: "הפגישה שנקבעה תבוטל והבקשה תחזור לתיאום כדי ש{mentor} תציע מועד חדש. אפשר לתאם מחדש פעם אחת בלבד.",
             confirm: "כן, בקשי מועד חדש",
             cancel: "חזרה",
             success: "הפגישה בוטלה. המנטורית תציע מועד חדש.",
           },
           confirmCannotAttendMeeting: {
-            title: "לא ניתן לתאם מועד נוסף",
+            title: "לבטל את הפגישה?",
             body:
-              "לא תוכלי לתאם מועד נוסף במסגרת הבקשה הזו. אם אינך יכולה להגיע לפגישה, כתבי לצד השני בקצרה מה קרה.",
+              "הפגישה והבקשה ייסגרו. כתבי לצד השני בקצרה למה את מבטלת — ההודעה תישלח יחד עם הביטול.",
             fieldLabel: "סיבת הביטול / הודעה לצד השני",
             fieldPlaceholder: "כתבי בקצרה למה לא תוכלי להגיע...",
             confirm: "שליחת הודעה וביטול הפגישה",
@@ -385,12 +390,12 @@ export const translations = {
             emptyTitle: "אין עדיין פגישות שנקבעו",
             emptyHint: "כשמנטית תבחר אחד מהמועדים שהצעת, הפגישה תופיע כאן.",
             whenLabel: "מועד הפגישה",
-            rescheduleCta: "המועד הזה לא מסתדר לי",
-            cannotAttendMeetingCta: "לא אוכל להגיע לפגישה",
+            rescheduleCta: "תאמי מחדש",
+            cannotAttendMeetingCta: "בטלי פגישה",
           },
         },
         reschedule: {
-          title: "אי אפשר להגיע לפגישה?",
+          title: "לתאם מחדש את הפגישה?",
           body: "הפגישה שנקבעה עם {menteeName} תבוטל והבקשה תחזור אלייך כדי להציע מועד חדש. אפשר לתאם מחדש פעם אחת בלבד.",
           cancel: "חזרה",
           confirm: "כן, הצעת מועד חדש",
@@ -400,9 +405,9 @@ export const translations = {
           conflict: "מצב הבקשה השתנה בינתיים. רעננו עבורך את הרשימה.",
         },
         cannotAttendMeeting: {
-          title: "לא ניתן לתאם מועד נוסף",
+          title: "לבטל את הפגישה?",
           body:
-            "לא תוכלי לתאם מועד נוסף במסגרת הבקשה הזו. אם אינך יכולה להגיע לפגישה, כתבי לצד השני בקצרה מה קרה.",
+            "הפגישה והבקשה ייסגרו. כתבי לצד השני בקצרה למה את מבטלת — ההודעה תישלח יחד עם הביטול.",
           fieldLabel: "סיבת הביטול / הודעה לצד השני",
           fieldPlaceholder: "כתבי בקצרה למה לא תוכלי להגיע...",
           confirm: "שליחת הודעה וביטול הפגישה",
@@ -735,6 +740,11 @@ export const translations = {
           retry: "إعادة المحاولة",
           emptyTitle: "لا يوجد ما تنسّقينه حاليًا",
           emptyHint: "عندما تقترح مرشدة مواعيد للقاء، ستظهر هنا.",
+          sections: {
+            pending: "طلبات قيد الانتظار",
+            scheduled: "لقاءات مجدولة",
+            past: "ملغاة / سابقة",
+          },
           proposed: {
             chip: "باختيارك",
             roundLabel: "جولة الاقتراحات {round} من 3",
@@ -749,8 +759,8 @@ export const translations = {
           matched: {
             chipFallback: "مُحدَّد",
             whenLabel: "موعد اللقاء",
-            rescheduleCta: "هذا الموعد لا يناسبني",
-            cannotAttendMeetingCta: "لن أتمكّن من حضور اللقاء",
+            rescheduleCta: "أعيدي التنسيق",
+            cannotAttendMeetingCta: "ألغي اللقاء",
             rescheduledNote: "أُلغي اللقاء السابق — ستقترح المرشدة موعدًا جديدًا.",
           },
           statuses: {
@@ -771,16 +781,16 @@ export const translations = {
             },
           },
           confirmReschedule: {
-            title: "لا يمكنك حضور اللقاء؟",
+            title: "إعادة تنسيق اللقاء؟",
             body: "سيُلغى اللقاء المحدد ويعود الطلب إلى التنسيق لتقترح {mentor} موعدًا جديدًا. يُسمح بإعادة التنسيق مرة واحدة فقط.",
             confirm: "نعم، اطلبي موعدًا جديدًا",
             cancel: "رجوع",
             success: "أُلغي اللقاء. ستقترح المرشدة موعدًا جديدًا.",
           },
           confirmCannotAttendMeeting: {
-            title: "لا يمكن تنسيق موعد آخر",
+            title: "إلغاء اللقاء؟",
             body:
-              "لا يمكنك تنسيق موعد آخر ضمن هذا الطلب. إذا لم تتمكّني من حضور اللقاء، اكتبي للطرف الآخر باختصار ما الذي حدث.",
+              "سيُغلق اللقاء والطلب. اكتبي للطرف الآخر باختصار لماذا تلغين — ستُرسل الرسالة مع الإلغاء.",
             fieldLabel: "سبب الإلغاء / رسالة للطرف الآخر",
             fieldPlaceholder: "اكتبي باختصار لماذا لن تتمكّني من الحضور...",
             confirm: "إرسال الرسالة وإلغاء اللقاء",
@@ -912,12 +922,12 @@ export const translations = {
             emptyTitle: "لا توجد لقاءات مُحدَّدة بعد",
             emptyHint: "عندما تختار المتدرّبة أحد المواعيد التي اقترحتِها، سيظهر اللقاء هنا.",
             whenLabel: "موعد اللقاء",
-            rescheduleCta: "هذا الموعد لا يناسبني",
-            cannotAttendMeetingCta: "لن أتمكّن من حضور اللقاء",
+            rescheduleCta: "أعيدي التنسيق",
+            cannotAttendMeetingCta: "ألغي اللقاء",
           },
         },
         reschedule: {
-          title: "لا يمكنك حضور اللقاء؟",
+          title: "إعادة تنسيق اللقاء؟",
           body: "سيُلغى اللقاء المحدد مع {menteeName} ويعود الطلب إليك لاقتراح موعد جديد. يُسمح بإعادة التنسيق مرة واحدة فقط.",
           cancel: "رجوع",
           confirm: "نعم، اقترحي موعدًا جديدًا",
@@ -927,9 +937,9 @@ export const translations = {
           conflict: "تغيّرت حالة الطلب في هذه الأثناء. حدّثنا القائمة من أجلك.",
         },
         cannotAttendMeeting: {
-          title: "لا يمكن تنسيق موعد آخر",
+          title: "إلغاء اللقاء؟",
           body:
-            "لا يمكنك تنسيق موعد آخر ضمن هذا الطلب. إذا لم تتمكّني من حضور اللقاء، اكتبي للطرف الآخر باختصار ما الذي حدث.",
+            "سيُغلق اللقاء والطلب. اكتبي للطرف الآخر باختصار لماذا تلغين — ستُرسل الرسالة مع الإلغاء.",
           fieldLabel: "سبب الإلغاء / رسالة للطرف الآخر",
           fieldPlaceholder: "اكتبي باختصار لماذا لن تتمكّني من الحضور...",
           confirm: "إرسال الرسالة وإلغاء اللقاء",
@@ -1263,6 +1273,11 @@ export const translations = {
           retry: "Try again",
           emptyTitle: "Nothing to schedule right now",
           emptyHint: "When a mentor proposes meeting times, they'll show up here.",
+          sections: {
+            pending: "Pending requests",
+            scheduled: "Scheduled meetings",
+            past: "Cancelled / past",
+          },
           proposed: {
             chip: "Your choice",
             roundLabel: "Proposal round {round} of 3",
@@ -1277,8 +1292,8 @@ export const translations = {
           matched: {
             chipFallback: "Scheduled",
             whenLabel: "Meeting time",
-            rescheduleCta: "This time no longer works for me",
-            cannotAttendMeetingCta: "I can't attend the meeting",
+            rescheduleCta: "Reschedule meeting",
+            cannotAttendMeetingCta: "Cancel meeting",
             rescheduledNote: "The previous meeting was cancelled — the mentor will propose a new time.",
           },
           statuses: {
@@ -1299,16 +1314,16 @@ export const translations = {
             },
           },
           confirmReschedule: {
-            title: "Can't make the meeting?",
+            title: "Reschedule this meeting?",
             body: "The scheduled meeting will be cancelled and the request goes back to scheduling so {mentor} can propose a new time. Rescheduling is allowed once only.",
             confirm: "Yes, ask for a new time",
             cancel: "Back",
             success: "The meeting was cancelled. The mentor will propose a new time.",
           },
           confirmCannotAttendMeeting: {
-            title: "No further rescheduling",
+            title: "Cancel this meeting?",
             body:
-              "You can't coordinate another time within this request. If you can't attend the meeting, write a short note to the other side about what happened.",
+              "The meeting and request will be closed. Write a short note to the other side — it will be sent with the cancellation.",
             fieldLabel: "Reason for cancelling / message to the other side",
             fieldPlaceholder: "Briefly, why you can't attend...",
             confirm: "Send message & cancel the meeting",
@@ -1440,12 +1455,12 @@ export const translations = {
             emptyTitle: "No scheduled meetings yet",
             emptyHint: "When a mentee picks one of the times you proposed, the meeting shows up here.",
             whenLabel: "Meeting time",
-            rescheduleCta: "This time no longer works for me",
-            cannotAttendMeetingCta: "I can't attend the meeting",
+            rescheduleCta: "Reschedule meeting",
+            cannotAttendMeetingCta: "Cancel meeting",
           },
         },
         reschedule: {
-          title: "Can't make the meeting?",
+          title: "Reschedule this meeting?",
           body: "The scheduled meeting with {menteeName} will be cancelled and the request comes back to you to propose a new time. Rescheduling is allowed once only.",
           cancel: "Back",
           confirm: "Yes, propose a new time",
@@ -1455,9 +1470,9 @@ export const translations = {
           conflict: "The request changed in the meantime. We've refreshed the list for you.",
         },
         cannotAttendMeeting: {
-          title: "No further rescheduling",
+          title: "Cancel this meeting?",
           body:
-            "You can't coordinate another time within this request. If you can't attend the meeting, write a short note to the other side about what happened.",
+            "The meeting and request will be closed. Write a short note to the other side — it will be sent with the cancellation.",
           fieldLabel: "Reason for cancelling / message to the other side",
           fieldPlaceholder: "Briefly, why you can't attend...",
           confirm: "Send message & cancel the meeting",
