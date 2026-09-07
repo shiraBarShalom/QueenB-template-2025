@@ -14,19 +14,26 @@ export const ROUTES = {
   HOME: "/",
   LOGIN: "/login",
 
-  // Authenticated area (placeholder shells for now)
-  APP: "/app", // Mentee Home / Mentor Search — main page after login
+  // Authenticated area
+  APP: "/app", // Mentee home = mentor discovery — main page after login
   APP_PERSONAL_AREA: "/app/personal-area",
   APP_MENTOR_AREA: "/app/mentor-area",
-  // Entry point for Part 3 (mentor proposes 2–3 slots for one request). Only
-  // the route shell exists today; the slot picker itself is Part 3.
+  // Entry point for Part 3 (mentor proposes 2–3 slots for one request).
   APP_MENTOR_PROPOSE_SLOTS: "/app/mentor-area/requests/:requestId/propose-slots",
   APP_BECOME_MENTOR: "/app/become-a-mentor",
+
   // Post-meeting feedback. A deliberately FOCUSED page: it renders OUTSIDE the
   // <AppLayout> nav shell (see App.js) so the user only sees the feedback task
   // she came here for. One participant (mentor or mentee) submits her own
   // response; the backend authorises her against the meeting.
   APP_MEETING_FEEDBACK: "/app/meetings/:meetingId/feedback",
+
+  /** Mentor profile under the authenticated shell. Use mentorProfilePath(id). */
+  APP_MENTOR_PROFILE: "/app/mentors/:id",
+
+  // Legacy discovery URLs — redirected to APP routes in App.js
+  LEGACY_MENTORS: "/mentors",
+  LEGACY_MENTOR_PROFILE: "/mentors/:id",
 };
 
 // Build the concrete propose-slots path for a given request id.
@@ -36,5 +43,10 @@ export const mentorProposeSlotsPath = (requestId) =>
 // Build the concrete post-meeting feedback path for a given meeting id.
 export const meetingFeedbackPath = (meetingId) =>
   `/app/meetings/${meetingId}/feedback`;
+
+/** Build the mentor profile path for a given user id. */
+export function mentorProfilePath(id) {
+  return `/app/mentors/${id}`;
+}
 
 export default ROUTES;

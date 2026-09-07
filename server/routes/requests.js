@@ -52,6 +52,14 @@ router.post("/requests/:id/reject", async (req, res) => {
   }
 });
 
+// NOTE: there is intentionally NO `POST /api/requests/:id/cancel` here. That
+// path belongs to the scheduling state machine (routes/scheduling.js ->
+// schedulingService.mentorCancel: mentor ends the request, flips the Meeting to
+// CANCELLED, notifies, compare-and-set). Mentee "cancel my open request" from
+// the mentor profile page goes through `POST /api/requests/:id/withdraw`
+// instead. requestService.cancelRequest is kept but no longer wired to a route
+// (same treatment as requestService.rejectRequest).
+
 // GET /api/mentees/:userId/requests — requests this user filed as a mentee
 router.get("/mentees/:userId/requests", async (req, res) => {
   try {

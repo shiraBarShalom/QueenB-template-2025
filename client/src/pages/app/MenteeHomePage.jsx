@@ -1,61 +1,237 @@
-import React from "react";
-import { Box, Button, Chip, Stack, TextField, Typography } from "@mui/material";
-import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
-import SearchOffRoundedIcon from "@mui/icons-material/SearchOffRounded";
+import React, { useEffect, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
+import axios from "axios";
+import {
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Stack,
+  Typography,
+} from "@mui/material";
 
+import { colors, fonts, radii, shadows } from "../../theme/tokens";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import { mentorProfilePath } from "../../constants/routes";
 import PageHeader from "../../components/app/PageHeader";
-import ContentCard from "../../components/app/ContentCard";
-import ListContainer from "../../components/app/ListContainer";
 
 /**
- * `/app` — Mentee Home / Mentor Search.
- * PLACEHOLDER SHELL ONLY: no real search, no data, no matching.
- * The team wires the search box, filters and results list to the API later.
+ * `/app` — Mentee Home.
+ *
+ * This is the mentor-discovery experience, integrated into the Match Queens
+ * application shell: the fetching / loading / error / empty logic and the data
+ * contract come from `feature/mentor-discovery`; the header uses the app's
+ * shared <PageHeader> and the shell's <AppNav> already carries the Match Queens
+ * wordmark, so no standalone brand block is rendered here.
+ *
+ * Flow: this list → mentor profile (`/app/mentors/:userId`) → send request.
  */
+
+function fill(template, vars) {
+  return Object.entries(vars).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    template
+  );
+}
+
+function MentorCard({ mentor, copy }) {
+  const initials = (mentor.username || "?")
+    .split(/[\s_]+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const topics = (mentor.adviceTopics || "")
+    .split(",")
+    .map((topic) => topic.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+
+  const experienceText =
+    mentor.yearsOfExperience != null
+      ? fill(copy.card.yearsExperience, { count: mentor.yearsOfExperience })
+      : copy.card.experienceUnknown;
+
+  const meetingText =
+    mentor.meetingDurationMins != null
+      ? ` · ${fill(copy.card.meetingMins, {
+          count: mentor.meetingDurationMins,
+        })}`
+      : "";
+
+  return (
+    <Box
+      component="article"
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 1.5,
+        p: { xs: 2.25, sm: 2.75 },
+        height: "100%",
+        borderRadius: `${radii.lg}px`,
+        background: colors.overlay,
+        border: `1px solid ${colors.border}`,
+        backdropFilter: "blur(10px)",
+        boxShadow: shadows.soft,
+        transition: "transform 180ms ease, box-shadow 180ms ease",
+        animation: "mentorMeFadeUp 600ms ease-out both",
+        "&:hover": {
+          transform: "translateY(-3px)",
+          boxShadow: shadows.medium,
+        },
+      }}
+    >
+      <Stack direction="row" spacing={1.75} alignItems="center">
+        <Avatar
+          src={mentor.profilePictureUrl || undefined}
+          alt={mentor.username}
+          sx={{
+            width: 56,
+            height: 56,
+            bgcolor: colors.pink[500],
+            fontFamily: fonts.display,
+            fontWeight: 700,
+          }}
+        >
+          {initials}
+        </Avatar>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            component="h2"
+            sx={{
+              fontFamily: fonts.display,
+              fontWeight: 700,
+              fontSize: "1.25rem",
+              lineHeight: 1.2,
+              color: colors.pink[700],
+            }}
+          >
+            {mentor.username}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" noWrap>
+            {[mentor.jobTitle, mentor.company].filter(Boolean).join(" · ") ||
+              copy.card.mentorFallback}
+          </Typography>
+        </Box>
+      </Stack>
+
+      <Typography variant="body2" color="text.secondary">
+        {experienceText}
+        {meetingText}
+      </Typography>
+
+      {mentor.techStack && (
+        <Typography variant="body2" sx={{ color: colors.text.primary }}>
+          {mentor.techStack}
+        </Typography>
+      )}
+
+      {topics.length > 0 && (
+        <Stack direction="row" flexWrap="wrap" useFlexGap gap={0.75}>
+          {topics.map((topic) => (
+            <Chip key={topic} label={topic} size="small" variant="outlined" />
+          ))}
+        </Stack>
+      )}
+
+      <Box sx={{ flexGrow: 1 }} />
+
+      <Button
+        component={RouterLink}
+        to={mentorProfilePath(mentor.userId)}
+        variant="contained"
+        fullWidth
+      >
+        {copy.card.viewProfile}
+      </Button>
+    </Box>
+  );
+}
+
 export default function MenteeHomePage() {
   const { t } = useLanguage();
-  const c = t.app.menteeHome;
-  const searchLabel = t.app.nav.menteeHome;
+  const copy = t.mentors;
+
+  const [mentors, setMentors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [errorKey, setErrorKey] = useState("");
+  const [serverError, setServerError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMentors() {
+      setLoading(true);
+      setErrorKey("");
+      setServerError("");
+
+      try {
+        // /api is forwarded to Express by src/setupProxy.js
+        const response = await axios.get("/api/mentors");
+        const list = response.data?.data ?? [];
+        if (!cancelled) {
+          setMentors(Array.isArray(list) ? list : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setErrorKey("load");
+          setServerError(err.response?.data?.message || "");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadMentors();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const errorText = serverError || (errorKey === "load" ? copy.loadError : "");
 
   return (
     <Box>
-      <PageHeader title={c.title} description={c.description} />
+      <PageHeader title={copy.title} description={copy.subtitle} />
 
-      <Stack spacing={{ xs: 2.5, md: 3 }}>
-        {/* Search area — placeholder (disabled) */}
-        <ContentCard>
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
-            <TextField
-              fullWidth
-              disabled
-              placeholder={c.searchPlaceholder}
-              InputProps={{ startAdornment: <SearchRoundedIcon sx={{ mr: 1, color: "#b05a75" }} /> }}
-            />
-            <Button variant="contained" disabled sx={{ px: 4, flexShrink: 0 }}>
-              {searchLabel}
-            </Button>
-          </Stack>
-        </ContentCard>
+      {loading && (
+        <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
+          <CircularProgress />
+        </Box>
+      )}
 
-        {/* Filters — placeholder */}
-        <ContentCard title={c.filtersTitle}>
-          <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1, mb: 1.5 }}>
-            {["", "", ""].map((_, i) => (
-              <Chip key={i} label="—" disabled variant="outlined" />
-            ))}
-          </Stack>
-          <Typography sx={{ color: "#6d3049", fontSize: "0.9rem" }}>{c.filtersHint}</Typography>
-        </ContentCard>
+      {!loading && errorText && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {errorText}
+        </Alert>
+      )}
 
-        {/* Results — empty-state example (swap to `loading` / real items when wired) */}
-        <ContentCard title={c.resultsTitle}>
-          <ListContainer
-            isEmpty
-            empty={{ icon: SearchOffRoundedIcon, title: c.emptyTitle, hint: c.emptyHint }}
-          />
-        </ContentCard>
-      </Stack>
+      {!loading && !errorText && mentors.length === 0 && (
+        <Alert severity="info">{copy.empty}</Alert>
+      )}
+
+      {!loading && !errorText && mentors.length > 0 && (
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "1fr",
+              sm: "repeat(2, 1fr)",
+              md: "repeat(3, 1fr)",
+            },
+            gap: 2.5,
+          }}
+        >
+          {mentors.map((mentor) => (
+            <MentorCard key={mentor.userId} mentor={mentor} copy={copy} />
+          ))}
+        </Box>
+      )}
     </Box>
   );
 }
