@@ -19,6 +19,14 @@ export function RequireAuth({ children }) {
   return children;
 }
 
+export function RequireAdmin({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/" replace />;
+  if (!user.isAdmin) return <Navigate to="/home" replace />;
+  return children;
+}
+
 export function RequireOnboarding({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingScreen />;
@@ -33,7 +41,7 @@ export function GuestOnly({ children }) {
   if (!user) return children;
   return (
     <Navigate
-      to={user.profile?.onboardingComplete ? "/home" : "/onboarding"}
+      to={user.profile?.onboardingComplete ? (user.isAdmin ? "/admin" : "/home") : "/onboarding"}
       replace
     />
   );

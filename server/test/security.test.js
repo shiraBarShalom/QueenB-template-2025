@@ -12,6 +12,7 @@ const {
   resetPasswordSchema,
   rolesSchema,
 } = require("../validation/users");
+const { adminUserUpdateSchema } = require("../validation/admin");
 
 test("Argon2id hashes are one-way and verifiable", async () => {
   const password = "correct horse battery staple";
@@ -73,4 +74,16 @@ test("password reset and role schemas reject unsafe input", () => {
   );
   assert.equal(rolesSchema.safeParse({ roles: [] }).success, false);
   assert.equal(rolesSchema.safeParse({ roles: ["MENTEE", "MENTOR"] }).success, true);
+});
+
+test("admin updates reject password hashes and empty payloads", () => {
+  assert.equal(
+    adminUserUpdateSchema.safeParse({ password_hash: "injected" }).success,
+    false
+  );
+  assert.equal(adminUserUpdateSchema.safeParse({}).success, false);
+  assert.equal(
+    adminUserUpdateSchema.safeParse({ isAdmin: true, roles: ["MENTOR"] }).success,
+    true
+  );
 });

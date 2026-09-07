@@ -136,6 +136,21 @@ npm run dev
 - `dev` starts the API at `http://localhost:5000` and React at
   `http://localhost:3000`.
 
+## 5. Create an administrator
+
+After migration:
+
+```powershell
+npm run admin:create
+```
+
+The command prompts for name, email, and password. Password input is hidden,
+hashed with Argon2id, and never enters terminal history. Running it again for an
+existing email securely promotes that account and replaces its password.
+
+Public signup cannot create an administrator. After the first sign-in, complete
+onboarding, then open **Admin dashboard**.
+
 ## Password reset with Resend
 
 1. Create a [Resend](https://resend.com) account and copy an API key into
@@ -162,7 +177,19 @@ choose mentee, mentor, or both. Each step saves immediately through:
 
 Completed members land on `/home` and can return to `/onboarding` to edit.
 
-## Authentication API
+## Administrator workflow
+
+- `/admin` lists accounts with search, pagination, and membership stats.
+- `/admin/users/:id` edits name, email, roles, profile, admin access, and
+  account status.
+- Administrators cannot demote or disable themselves, and the last active
+  administrator cannot be demoted or disabled.
+- Disabled accounts cannot sign in. Disabling an account also revokes its
+  sessions.
+- **Send reset email** and **Sign out everywhere** require confirmation and are
+  written to the audit log.
+
+## Authentication and admin API
 
 - `POST /api/users/register` — display name, email, password
 - `POST /api/users/login` — email, password
@@ -174,6 +201,13 @@ Completed members land on `/home` and can return to `/onboarding` to edit.
 - `PUT /api/users/me/roles` — `MENTEE` and/or `MENTOR`
 - `PATCH /api/users/me/profile` — shared professional profile
 - `PATCH /api/users/me/mentor-profile` — opt in or update mentor settings
+- `GET /api/admin/me` — current administrator
+- `GET /api/admin/stats` — membership counts
+- `GET /api/admin/users` — paginated search
+- `GET /api/admin/users/:id` — account detail
+- `PATCH /api/admin/users/:id` — account, roles, and profile
+- `DELETE /api/admin/users/:id/sessions` — revoke sessions
+- `POST /api/admin/users/:id/password-reset` — send a reset email
 
 Common profile fields are background, LinkedIn/GitHub URLs, job title, company,
 experience, programming languages, and tech stack. Mentor-only fields are advice
@@ -205,8 +239,9 @@ npm run test:server
 
 Create `mentorme_test` separately and use a test-only owner. The integration
 suite verifies registration, Argon2 storage, sessions, logout, profile
-authorization, password reset, rate limiting, duplicate accounts, and
-SQL-injection-shaped input.
+authorization, password reset, admin authorization, last-admin protection,
+disabled-user login, rate limiting, duplicate accounts, and SQL-injection-shaped
+input.
 
 ## Production notes
 

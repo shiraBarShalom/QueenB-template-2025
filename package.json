@@ -19,6 +19,7 @@
     "db:upgrade-passwords": "cd server && npm run db:upgrade-passwords",
     "db:migrate": "cd server && npm run db:migrate",
     "db:verify": "cd server && npm run db:verify",
+    "admin:create": "cd server && npm run admin:create",
     "test:server": "cd server && npm test",
     "test:client": "cd client && npm test -- --watchAll=false"
   },

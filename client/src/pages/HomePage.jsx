@@ -37,6 +37,11 @@ export default function HomePage() {
           <Button component={Link} to="/onboarding" variant="contained">
             Edit profile
           </Button>
+          {user.isAdmin && (
+            <Button component={Link} to="/admin" variant="outlined">
+              Admin dashboard
+            </Button>
+          )}
           <Button onClick={logout} color="inherit">
             Sign out
           </Button>

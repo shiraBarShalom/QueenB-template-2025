@@ -62,6 +62,7 @@ app.use(
 app.use("/api/users", require("./routes/users"));           // Domain 1: Auth & Profiles
 app.use("/api/mentors", require("./routes/mentors"));       // Domain 2: Discovery & Requests
 app.use("/api/requests", require("./routes/scheduling"));   // Domain 3: Scheduling & Statuses
+app.use("/api/admin", require("./routes/admin"));            // Domain 4: Administration
 
 // Health check endpoint
 app.get("/api/health", (req, res) => {

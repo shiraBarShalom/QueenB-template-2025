@@ -6,6 +6,7 @@ import theme from "./theme";
 import { AuthProvider } from "./context/AuthContext";
 import {
   GuestOnly,
+  RequireAdmin,
   RequireAuth,
   RequireOnboarding,
 } from "./components/RouteGuards";
@@ -14,6 +15,8 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import OnboardingPage from "./pages/OnboardingPage";
 import HomePage from "./pages/HomePage";
+import AdminPage from "./pages/AdminPage";
+import AdminUserPage from "./pages/AdminUserPage";
 
 function App() {
   return (
@@ -55,6 +58,26 @@ function App() {
                     <HomePage />
                   </RequireOnboarding>
                 </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <RequireAdmin>
+                  <RequireOnboarding>
+                    <AdminPage />
+                  </RequireOnboarding>
+                </RequireAdmin>
+              }
+            />
+            <Route
+              path="/admin/users/:id"
+              element={
+                <RequireAdmin>
+                  <RequireOnboarding>
+                    <AdminUserPage />
+                  </RequireOnboarding>
+                </RequireAdmin>
               }
             />
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -39,6 +39,7 @@ async function verifyMigration() {
     "user_sessions",
     "user_roles",
     "password_reset_tokens",
+    "admin_actions",
   ];
   const tableNames = tables.rows.map((row) => row.table_name);
   const missingTables = requiredTables.filter((name) => !tableNames.includes(name));
