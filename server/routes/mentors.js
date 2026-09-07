@@ -34,11 +34,14 @@ function toPart2Status(status) {
   }
 }
 
-// Prisma MentorProfile (+ user/topics/tech) → Part 2 list card (no email/links).
+// Prisma MentorProfile (+ user/topics/tech/spoken languages) → Part 2 list card.
+// techStack = programming languages/technologies; spokenLanguages = human languages.
+// Legacy programmingLanguages stays null and is never filled with spoken languages.
 function toMentorListItem(profile) {
   const user = profile.user || {};
   const techNames = (user.technologies || []).map((t) => t.name).filter(Boolean);
   const topicNames = (profile.mentoringTopics || []).map((t) => t.name).filter(Boolean);
+  const spokenNames = (user.spokenLanguages || []).map((l) => l.name).filter(Boolean);
 
   return {
     userId: user.id ?? profile.userId,
@@ -49,6 +52,7 @@ function toMentorListItem(profile) {
     yearsOfExperience: user.yearsOfExperience ?? null,
     techStack: techNames.length ? techNames.join(", ") : null,
     programmingLanguages: null,
+    spokenLanguages: spokenNames,
     profilePictureUrl: user.profileImageUrl || null,
     background: profile.background || null,
     adviceTopics: topicNames.length ? topicNames.join(", ") : null,

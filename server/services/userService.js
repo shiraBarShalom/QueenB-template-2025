@@ -27,12 +27,13 @@ function verifyPassword(plain, stored) {
 }
 
 // ----------------------------------------------------------------------------
-// Shared read shape: never return passwordHash, always include technologies.
+// Shared read shape: never return passwordHash; include technologies (tech
+// stack) and spokenLanguages (human languages) — kept separate on purpose.
 // `omit` keeps every other column without having to list them one by one.
 // ----------------------------------------------------------------------------
 const PUBLIC_USER = {
   omit: { passwordHash: true },
-  include: { technologies: true },
+  include: { technologies: true, spokenLanguages: true },
 };
 
 // Fields the client is allowed to set/change directly. `email`/`password` are
@@ -79,6 +80,20 @@ function technologiesConnect(names) {
   };
 }
 
+// spokenLanguages: ["Hebrew", "English"] — human languages, not tech stack.
+function spokenLanguagesConnect(names) {
+  if (names === undefined) return undefined;
+  if (!Array.isArray(names)) {
+    throw new ApiError("spokenLanguages must be an array of names", 400);
+  }
+  return {
+    connectOrCreate: names
+      .map((n) => String(n).trim())
+      .filter(Boolean)
+      .map((name) => ({ where: { name }, create: { name } })),
+  };
+}
+
 // ----------------------------------------------------------------------------
 // Operations
 // ----------------------------------------------------------------------------
@@ -104,6 +119,9 @@ async function createUser(body = {}) {
 
   const technologies = technologiesConnect(body.technologies);
   if (technologies) data.technologies = technologies;
+
+  const spokenLanguages = spokenLanguagesConnect(body.spokenLanguages);
+  if (spokenLanguages) data.spokenLanguages = spokenLanguages;
 
   // A duplicate email surfaces as Prisma P2002 -> 409 (see utils/prismaError).
   return prisma.user.create({ data, ...PUBLIC_USER });
@@ -141,6 +159,11 @@ async function updateUser(rawId, body = {}) {
   if (technologies) {
     // `set: []` first would be needed to remove; for MVP we only add/keep.
     data.technologies = technologies;
+  }
+
+  const spokenLanguages = spokenLanguagesConnect(body.spokenLanguages);
+  if (spokenLanguages) {
+    data.spokenLanguages = spokenLanguages;
   }
 
   if (Object.keys(data).length === 0) {

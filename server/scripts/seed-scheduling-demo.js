@@ -63,6 +63,7 @@ const MENTORS = [
     background: "Frontend architecture, design systems and growing into senior roles.",
     topics: ["Frontend architecture", "Career growth"],
     technologies: ["React", "TypeScript", "CSS"],
+    spokenLanguages: ["Hebrew", "English"],
   },
   {
     uid: U(2), pid: P(2), key: "noa",
@@ -71,6 +72,7 @@ const MENTORS = [
     background: "Backend systems, API design and first-time team leadership.",
     topics: ["System design", "Leadership"],
     technologies: ["Node.js", "PostgreSQL", "AWS"],
+    spokenLanguages: ["Hebrew", "English"],
   },
   {
     uid: U(3), pid: P(3), key: "tamar",
@@ -79,6 +81,7 @@ const MENTORS = [
     background: "Applied ML and technical interview preparation.",
     topics: ["Machine learning", "Interview prep"],
     technologies: ["Python", "SQL", "PyTorch"],
+    spokenLanguages: ["Hebrew", "Arabic", "English"],
   },
   {
     uid: U(4), pid: P(4), key: "rivka",
@@ -87,6 +90,7 @@ const MENTORS = [
     background: "Distributed systems and long-term technical career planning.",
     topics: ["Distributed systems"],
     technologies: ["Go", "Kubernetes"],
+    spokenLanguages: ["English"],
   },
   {
     uid: U(5), pid: P(5), key: "dana",
@@ -95,6 +99,7 @@ const MENTORS = [
     background: "Fullstack product work and going freelance.",
     topics: ["Fullstack", "Freelancing"],
     technologies: ["React", "Node.js"],
+    spokenLanguages: ["Hebrew", "Arabic"],
   },
 ];
 
@@ -187,6 +192,12 @@ function techConnect(names) {
   };
 }
 
+function spokenLanguagesConnect(names) {
+  return {
+    connectOrCreate: names.map((name) => ({ where: { name }, create: { name } })),
+  };
+}
+
 async function seed() {
   const passwordHash = hashPassword(DEMO_PASSWORD);
   const byKey = {}; // key -> { uid, pid? }
@@ -203,6 +214,7 @@ async function seed() {
         workplace: m.workplace,
         yearsOfExperience: m.yearsOfExperience,
         technologies: techConnect(m.technologies),
+        spokenLanguages: spokenLanguagesConnect(m.spokenLanguages || []),
       },
     });
     byKey[m.key] = { uid: m.uid, pid: m.pid, fullName: m.fullName };
@@ -219,6 +231,9 @@ async function seed() {
         yearsOfExperience: mt.yearsOfExperience,
         profileImageUrl: mt.img,
         technologies: techConnect(mt.technologies),
+        ...(mt.spokenLanguages?.length
+          ? { spokenLanguages: spokenLanguagesConnect(mt.spokenLanguages) }
+          : {}),
       },
     });
     byKey[mt.key] = { uid: mt.uid, fullName: mt.fullName };

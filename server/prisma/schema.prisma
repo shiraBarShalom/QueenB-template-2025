@@ -144,8 +144,9 @@ model User {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  technologies  Technology[]
-  mentorProfile MentorProfile?
+  technologies      Technology[]
+  spokenLanguages   SpokenLanguage[]
+  mentorProfile     MentorProfile?
 
   // Requests this user filed as a MENTEE. The mentor side of a request is
   // reached through MentorProfile.user, not a second direct relation here -
@@ -161,9 +162,17 @@ model User {
   meetingsCancelled           Meeting[]                    @relation("MeetingCancelledBy")
 }
 
-// Extendable, normalized list of languages/technologies. Never a
-// comma-separated string on User.
+// Programming languages and technologies (e.g. React, Python). Never spoken /
+// human languages — those live on SpokenLanguage.
 model Technology {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  users User[]
+}
+
+// Human / spoken languages a user can communicate in (e.g. Hebrew, Arabic,
+// English). Separate from Technology on purpose.
+model SpokenLanguage {
   id    Int    @id @default(autoincrement())
   name  String @unique
   users User[]

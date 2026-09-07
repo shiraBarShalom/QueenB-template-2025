@@ -12,10 +12,11 @@ const { parseId } = require("./userService");
 
 // Related data every mentor response carries. User identity is included but
 // never its passwordHash.
+// technologies = programming languages/tech stack; spokenLanguages = human languages.
 const MENTOR_INCLUDE = {
   user: {
     omit: { passwordHash: true },
-    include: { technologies: true },
+    include: { technologies: true, spokenLanguages: true },
   },
   mentoringTopics: true,
 };
@@ -70,6 +71,20 @@ function technologiesConnect(names) {
   };
 }
 
+// spokenLanguages (human languages) also live on the User — separate from technologies.
+function spokenLanguagesConnect(names) {
+  if (names === undefined) return undefined;
+  if (!Array.isArray(names)) {
+    throw new ApiError("spokenLanguages must be an array of names", 400);
+  }
+  return {
+    connectOrCreate: names
+      .map((n) => String(n).trim())
+      .filter(Boolean)
+      .map((name) => ({ where: { name }, create: { name } })),
+  };
+}
+
 // ----------------------------------------------------------------------------
 // Operations
 // ----------------------------------------------------------------------------
@@ -83,6 +98,7 @@ async function createMentor(body = {}) {
   );
   const topics = topicsConnect(body.mentoringTopics);
   const technologies = technologiesConnect(body.technologies);
+  const spokenLanguages = spokenLanguagesConnect(body.spokenLanguages);
 
   // Friendlier errors than letting the FK / unique constraint fire raw.
   const user = await prisma.user.findUnique({
@@ -93,8 +109,14 @@ async function createMentor(body = {}) {
   if (user.mentorProfile) throw new ApiError(`User ${userId} is already a mentor`, 409);
 
   return prisma.$transaction(async (tx) => {
-    if (technologies) {
-      await tx.user.update({ where: { id: userId }, data: { technologies } });
+    if (technologies || spokenLanguages) {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          ...(technologies ? { technologies } : {}),
+          ...(spokenLanguages ? { spokenLanguages } : {}),
+        },
+      });
     }
     return tx.mentorProfile.create({
       data: {
@@ -141,8 +163,9 @@ async function updateMentor(rawId, body = {}) {
   if (topics) data.mentoringTopics = topics;
 
   const technologies = technologiesConnect(body.technologies);
+  const spokenLanguages = spokenLanguagesConnect(body.spokenLanguages);
 
-  if (Object.keys(data).length === 0 && !technologies) {
+  if (Object.keys(data).length === 0 && !technologies && !spokenLanguages) {
     throw new ApiError("No updatable fields provided", 400);
   }
 
@@ -151,8 +174,14 @@ async function updateMentor(rawId, body = {}) {
     const profile = await tx.mentorProfile.findUnique({ where: { id } });
     if (!profile) throw new ApiError("Record not found", 404);
 
-    if (technologies) {
-      await tx.user.update({ where: { id: profile.userId }, data: { technologies } });
+    if (technologies || spokenLanguages) {
+      await tx.user.update({
+        where: { id: profile.userId },
+        data: {
+          ...(technologies ? { technologies } : {}),
+          ...(spokenLanguages ? { spokenLanguages } : {}),
+        },
+      });
     }
 
     return tx.mentorProfile.update({

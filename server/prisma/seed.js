@@ -32,6 +32,15 @@ function technologiesConnect(names) {
   };
 }
 
+function spokenLanguagesConnect(names) {
+  return {
+    connectOrCreate: names.map((name) => ({
+      where: { name },
+      create: { name },
+    })),
+  };
+}
+
 function topicsConnect(names) {
   return {
     connectOrCreate: names.map((name) => ({
@@ -41,7 +50,13 @@ function topicsConnect(names) {
   };
 }
 
-async function upsertUser({ email, fullName, extras = {}, technologies = [] }) {
+async function upsertUser({
+  email,
+  fullName,
+  extras = {},
+  technologies = [],
+  spokenLanguages = [],
+}) {
   const passwordHash = hashPassword(DEV_PASSWORD);
 
   return prisma.user.upsert({
@@ -52,14 +67,20 @@ async function upsertUser({ email, fullName, extras = {}, technologies = [] }) {
       fullName,
       ...extras,
       technologies: technologiesConnect(technologies),
+      ...(spokenLanguages.length
+        ? { spokenLanguages: spokenLanguagesConnect(spokenLanguages) }
+        : {}),
     },
     update: {
       fullName,
       ...extras,
       // Keep an existing password hash on re-seed so local logins stay stable.
       technologies: technologiesConnect(technologies),
+      ...(spokenLanguages.length
+        ? { spokenLanguages: spokenLanguagesConnect(spokenLanguages) }
+        : {}),
     },
-    include: { mentorProfile: true },
+    include: { mentorProfile: true, spokenLanguages: true },
   });
 }
 
@@ -124,6 +145,7 @@ async function main() {
       githubUrl: "https://github.com/dana-levi",
     },
     technologies: ["React", "Node.js", "TypeScript"],
+    spokenLanguages: ["Hebrew", "English"],
   });
 
   const maya = await upsertUser({
@@ -136,6 +158,7 @@ async function main() {
       linkedinUrl: "https://linkedin.com/in/maya-cohen",
     },
     technologies: ["Python", "Django", "PostgreSQL"],
+    spokenLanguages: ["Hebrew", "Arabic", "English"],
   });
 
   const shira = await upsertUser({
@@ -147,6 +170,7 @@ async function main() {
       yearsOfExperience: 1,
     },
     technologies: ["JavaScript"],
+    spokenLanguages: ["Hebrew"],
   });
 
   const danaMentor = await ensureMentorProfile(dana, {

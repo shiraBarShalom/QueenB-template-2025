@@ -377,8 +377,10 @@ export default function MentorProfilePage() {
             <DetailRow label={copy.labels.techStack}>
               {mentor.techStack}
             </DetailRow>
-            <DetailRow label={copy.labels.languages}>
-              {mentor.programmingLanguages}
+            <DetailRow label={copy.labels.spokenLanguages}>
+              {(mentor.spokenLanguages || []).length
+                ? mentor.spokenLanguages.join(", ")
+                : null}
             </DetailRow>
             <DetailRow label={copy.labels.meetingLength}>
               {mentor.meetingDurationMins != null
