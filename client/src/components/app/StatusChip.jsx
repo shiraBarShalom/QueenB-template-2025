@@ -19,13 +19,18 @@ export const STATUS_KEYS = ["pending", "scheduled", "done", "cancelled", "neutra
 
 const STYLES = {
   pending: { color: "#9a3412", bg: "rgba(217,119,6,0.14)" },
-  scheduled: { color: "#9f1239", bg: "rgba(225,29,106,0.12)" },
+  scheduled: { color: "#166534", bg: "rgba(21,128,61,0.14)" },
   done: { color: "#166534", bg: "rgba(21,128,61,0.14)" },
   cancelled: { color: "#7f1d1d", bg: "rgba(220,38,38,0.12)" },
   neutral: { color: "#6d3049", bg: "rgba(109,48,73,0.10)" },
 };
 
-export default function StatusChip({ status = "neutral", label, size = "small" }) {
+export default function StatusChip({
+  status = "neutral",
+  label,
+  size = "small",
+  sx,
+}) {
   const { t } = useLanguage();
   const key = STATUS_KEYS.includes(status) ? status : "neutral";
   const s = STYLES[key];
@@ -41,6 +46,7 @@ export default function StatusChip({ status = "neutral", label, size = "small" }
         color: s.color,
         backgroundColor: s.bg,
         border: "none",
+        ...sx,
       }}
     />
   );

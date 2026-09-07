@@ -197,6 +197,11 @@ function MentorCard({ mentor, copy, openRequest }) {
               <StatusChip
                 status="pending"
                 label={copy.card.requestAlreadySent}
+                sx={{
+                  // Discovery-only: keep shared pending amber elsewhere.
+                  color: "#a16207",
+                  backgroundColor: "rgba(234, 179, 8, 0.22)",
+                }}
               />
             )}
             {requestKind === "scheduled" && (

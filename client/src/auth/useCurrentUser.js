@@ -13,28 +13,29 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * DEV PERSONA SWITCH (temporary scaffolding — delete when real auth lands)
  * ─────────────────────────────────────────────────────────────────────────────
- * Two personas map onto users created by
- * server/scripts/seed-scheduling-demo.js (fixed ids, stable across reseeds):
+ * Personas (localStorage key mq.demoPersona):
  *
  *   "mentor"  -> Maya Ben-David   user 9001 / MentorProfile 9101
- *                rich Mentor Area: 3 waiting-for-response, 2 awaiting mentee,
- *                2 scheduled, 1 cancelled, 1 rejected.
+ *                from seed-scheduling-demo.js (fixed ids). Rich Mentor Area.
  *
  *   "mentee"  -> Efrat Dahan      user 9012 (no MentorProfile)
- *                Personal Area scheduling: 1 WAITING_FOR_MENTEE_SELECTION
- *                (from Dana Shapiro, 2 proposed slots) + 1 MATCHED (from Maya).
+ *                from seed-scheduling-demo.js. Personal Area scheduling demo.
+ *
+ *   "dana"    -> Dana Levi        user 2 / MentorProfile 1
+ *                from prisma/seed.js (auto-increment ids on this machine).
+ *                Mentor Area for the discovery-seed mentor (e.g. Shira's request).
  *
  * Switch persona either way:
  *   • edit DEFAULT_PERSONA below (needs a rebuild / dev-server reload), or
- *   • in the browser console:  localStorage.setItem("mq.demoPersona", "mentee")
+ *   • in the browser console:  localStorage.setItem("mq.demoPersona", "dana")
  *     then reload  (no rebuild; clear with localStorage.removeItem).
  *
  * `id` is the current users.id — scheduling actions send it as `actingUserId`
  * and the backend validates it against the request's mentor/mentee.
- * `mentorProfileId` (mentor persona only) just READS the mentor dashboard.
+ * `mentorProfileId` (mentor personas) just READS the mentor dashboard.
  */
 
-const DEFAULT_PERSONA = "mentor"; // "mentor" | "mentee"
+const DEFAULT_PERSONA = "mentor"; // "mentor" | "mentee" | "dana"
 const PERSONA_STORAGE_KEY = "mq.demoPersona";
 
 export const DEMO_PERSONAS = {
@@ -55,6 +56,15 @@ export const DEMO_PERSONAS = {
     displayName: "Efrat",
     id: 9012,
     mentorProfileId: null,
+  },
+  dana: {
+    isAuthenticated: true,
+    isMentee: true,
+    isMentor: true,
+    isAdmin: false,
+    displayName: "Dana",
+    id: 2,
+    mentorProfileId: 1,
   },
 };
 
