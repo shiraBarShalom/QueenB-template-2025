@@ -19,14 +19,21 @@ import {
 
 import { colors, fonts, radii, shadows } from "../../theme/tokens";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import { useCurrentUser } from "../../auth/useCurrentUser";
 import { mentorProfilePath } from "../../constants/routes";
 import PageHeader from "../../components/app/PageHeader";
+import StatusChip from "../../components/app/StatusChip";
+import {
+  buildOpenRequestByMentorUserId,
+  openRequestUiKind,
+} from "../../utils/openRequestStatus";
 
 /**
  * `/app` — Mentee Home.
  *
- * Mentor discovery with client-side search/filters. Cards and the
- * View Profile → `/app/mentors/:userId` → request flow stay unchanged.
+ * Mentor discovery with client-side search/filters. Cards keep View Profile;
+ * an optional status chip reflects an existing open request with that mentor
+ * (one fetch of GET /api/mentees/:id/requests, not per-card open checks).
  *
  * Filters use existing list fields plus spokenLanguages (human languages).
  * techStack stays programming languages/technologies — never mixed with spoken.
@@ -106,7 +113,7 @@ function matchesMentor(mentor, filters) {
   return true;
 }
 
-function MentorCard({ mentor, copy }) {
+function MentorCard({ mentor, copy, openRequest }) {
   const initials = (mentor.username || "?")
     .split(/[\s_]+/)
     .map((part) => part[0])
@@ -127,6 +134,8 @@ function MentorCard({ mentor, copy }) {
           count: mentor.meetingDurationMins,
         })}`
       : "";
+
+  const requestKind = openRequestUiKind(openRequest?.status);
 
   return (
     <Box
@@ -164,19 +173,39 @@ function MentorCard({ mentor, copy }) {
         >
           {initials}
         </Avatar>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            component="h2"
-            sx={{
-              fontFamily: fonts.display,
-              fontWeight: 700,
-              fontSize: "1.25rem",
-              lineHeight: 1.2,
-              color: colors.pink[700],
-            }}
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            flexWrap="wrap"
+            useFlexGap
           >
-            {mentor.username}
-          </Typography>
+            <Typography
+              component="h2"
+              sx={{
+                fontFamily: fonts.display,
+                fontWeight: 700,
+                fontSize: "1.25rem",
+                lineHeight: 1.2,
+                color: colors.pink[700],
+              }}
+            >
+              {mentor.username}
+            </Typography>
+            {requestKind === "pending" && (
+              <StatusChip
+                status="pending"
+                label={copy.card.requestAlreadySent}
+              />
+            )}
+            {requestKind === "scheduled" && (
+              <StatusChip
+                status="scheduled"
+                label={copy.card.meetingScheduled}
+              />
+            )}
+          </Stack>
           <Typography variant="body2" color="text.secondary" noWrap>
             {[mentor.jobTitle, mentor.company].filter(Boolean).join(" · ") ||
               copy.card.mentorFallback}
@@ -222,8 +251,10 @@ export default function MenteeHomePage() {
   const copy = t.mentors;
   const homeCopy = t.app.menteeHome;
   const filterCopy = homeCopy.filters;
+  const { id: menteeId } = useCurrentUser();
 
   const [mentors, setMentors] = useState([]);
+  const [openByMentorUserId, setOpenByMentorUserId] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [errorKey, setErrorKey] = useState("");
   const [serverError, setServerError] = useState("");
@@ -238,16 +269,33 @@ export default function MenteeHomePage() {
       setServerError("");
 
       try {
-        // /api is forwarded to Express by src/setupProxy.js
-        const response = await axios.get("/api/mentors");
-        const list = response.data?.data ?? [];
-        if (!cancelled) {
-          setMentors(Array.isArray(list) ? list : []);
-        }
+        // Mentors list + one mentee-requests fetch (not per card). Scheduling
+        // projection omits mentor userId / mentorProfileId, so it cannot map
+        // chips onto discovery cards — requests include both.
+        const mentorsPromise = axios.get("/api/mentors");
+        const requestsPromise = menteeId
+          ? axios.get(`/api/mentees/${menteeId}/requests`).catch(() => null)
+          : Promise.resolve(null);
+
+        const [mentorsResponse, requestsResponse] = await Promise.all([
+          mentorsPromise,
+          requestsPromise,
+        ]);
+
+        if (cancelled) return;
+
+        const list = mentorsResponse.data?.data ?? [];
+        setMentors(Array.isArray(list) ? list : []);
+
+        const requests = requestsResponse?.data?.data;
+        setOpenByMentorUserId(
+          buildOpenRequestByMentorUserId(Array.isArray(requests) ? requests : [])
+        );
       } catch (err) {
         if (!cancelled) {
           setErrorKey("load");
           setServerError(err.response?.data?.message || "");
+          setOpenByMentorUserId(new Map());
         }
       } finally {
         if (!cancelled) {
@@ -260,7 +308,7 @@ export default function MenteeHomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [menteeId]);
 
   const companyOptions = useMemo(
     () => uniqueSorted(mentors.map((m) => m.company)),
@@ -506,7 +554,12 @@ export default function MenteeHomePage() {
           }}
         >
           {filteredMentors.map((mentor) => (
-            <MentorCard key={mentor.userId} mentor={mentor} copy={copy} />
+            <MentorCard
+              key={mentor.userId}
+              mentor={mentor}
+              copy={copy}
+              openRequest={openByMentorUserId.get(mentor.userId) || null}
+            />
           ))}
         </Box>
       )}

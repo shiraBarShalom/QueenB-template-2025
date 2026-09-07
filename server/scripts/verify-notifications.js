@@ -185,7 +185,17 @@ async function main() {
     (await prisma.notification.count({ where: { recipientId: E, readAt: null } })) === 0);
 
   // === 8. withdraw / mentor cancel notifications ========================
+  // Sections 1–6 leave `req` MATCHED (open). Close it before creating new
+  // rows for the same mentee+mentor pair — createRequest now enforces the
+  // shared duplicate-open rule (409 while status ∉ CLOSED_REQUEST_STATUSES).
   console.log("\n[8] Terminal-action notifications");
+  await expectStatus(
+    "duplicate create while MATCHED -> 409",
+    () => requestService.createRequest({ menteeId: E, mentorProfileId: mentorProfile.id }),
+    409
+  );
+  await sched.cannotAttendMeeting(req.id, E, "verify-notifications closing matched request");
+
   const w = await requestService.createRequest({ menteeId: E, mentorProfileId: mentorProfile.id });
   await sched.withdraw(w.id, E);
   assert("withdraw notifies mentor REQUEST_CANCELLED", (await typesFor(M, w.id)).includes("REQUEST_CANCELLED"));

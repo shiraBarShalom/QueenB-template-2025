@@ -216,36 +216,35 @@ router.post("/:mentorId/requests", async (req, res) => {
       throw new ApiError("Mentee not found", 404);
     }
 
-    // Duplicate open-request prevention (Part 2).
-    const openRequest = await requestService.findOpenRequest(
-      menteeId,
-      mentorProfile.id
-    );
+    // Duplicate prevention lives in createRequest (shared with POST /api/requests).
+    // On 409 we re-map the existing row to the Part-2 meeting-request shape so
+    // the profile client keeps the same contract as before.
+    try {
+      const created = await requestService.createRequest({
+        menteeId,
+        mentorProfileId: mentorProfile.id,
+      });
 
-    if (openRequest) {
-      return sendError(
+      // createRequest persists WAITING_FOR_MENTOR_SLOTS and writes both opening
+      // notifications in one transaction. Status maps to PENDING_MENTOR for the
+      // Part 2 client; the row continues through the scheduling state machine.
+      return sendSuccess(
         res,
-        "Request already sent",
-        409,
-        toMeetingRequest(openRequest)
+        toMeetingRequest(created),
+        "Meeting request created successfully",
+        201
       );
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409 && err.data) {
+        return sendError(
+          res,
+          err.message || "Request already sent",
+          409,
+          toMeetingRequest(err.data)
+        );
+      }
+      throw err;
     }
-
-    // requestService.createRequest persists WAITING_FOR_MENTOR_SLOTS (the Prisma
-    // enum) and writes both opening notifications in one transaction. The
-    // response maps the status to PENDING_MENTOR for the Part 2 client; the row
-    // is a normal MentoringRequest the scheduling state machine continues from.
-    const created = await requestService.createRequest({
-      menteeId,
-      mentorProfileId: mentorProfile.id,
-    });
-
-    return sendSuccess(
-      res,
-      toMeetingRequest(created),
-      "Meeting request created successfully",
-      201
-    );
   } catch (err) {
     return handleError(err, res);
   }

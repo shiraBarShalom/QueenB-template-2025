@@ -21,6 +21,10 @@ import { colors, fonts, radii, shadows } from "../theme/tokens";
 import { useLanguage } from "../i18n/LanguageProvider";
 import { useCurrentUser } from "../auth/useCurrentUser";
 import { ROUTES } from "../constants/routes";
+import {
+  canWithdrawOpenRequest,
+  openRequestUiKind,
+} from "../utils/openRequestStatus";
 
 function fill(template, vars) {
   return Object.entries(vars).reduce(
@@ -68,6 +72,19 @@ async function fetchOpenRequest(mentorUserId, menteeId) {
   return openResponse.data?.data ?? null;
 }
 
+function openRequestBanner(copy, status) {
+  const kind = openRequestUiKind(status);
+  if (kind === "scheduled") return copy.meetingScheduledBanner;
+  if (status === "PENDING_MENTEE") return copy.pendingSlotsBanner;
+  return copy.alreadySentBanner;
+}
+
+function openRequestCtaLabel(copy, status) {
+  return openRequestUiKind(status) === "scheduled"
+    ? copy.meetingScheduled
+    : copy.requestAlreadySent;
+}
+
 /**
  * Mentor profile + request/cancel — rendered as `/app/mentors/:id` inside AppLayout.
  * Layout/nav/language chrome come from AppLayout + AppNav.
@@ -98,6 +115,8 @@ export default function MentorProfilePage() {
   const [serverRequestError, setServerRequestError] = useState("");
 
   const hasOpenRequest = Boolean(openRequest);
+  const openStatus = openRequest?.status;
+  const showWithdraw = hasOpenRequest && canWithdrawOpenRequest(openStatus);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,10 +206,15 @@ export default function MentorProfilePage() {
     } catch (err) {
       // 409 = backend found an existing open request for this pair
       if (err.response?.status === 409) {
-        setOpenRequest(err.response.data?.data ?? { id: true });
+        const existing = err.response.data?.data ?? { id: true };
+        setOpenRequest(existing);
         setRequestErrorKey("");
         setServerRequestError("");
-        setStatusKey("alreadySent");
+        setStatusKey(
+          openRequestUiKind(existing.status) === "scheduled"
+            ? "meetingScheduled"
+            : "alreadySent"
+        );
       } else {
         setRequestErrorKey("sendFailed");
         setServerRequestError(err.response?.data?.message || "");
@@ -202,7 +226,9 @@ export default function MentorProfilePage() {
   };
 
   const handleConfirmCancel = async () => {
-    if (!openRequest?.id || cancelling) return;
+    if (!openRequest?.id || cancelling || !canWithdrawOpenRequest(openStatus)) {
+      return;
+    }
 
     setCancelling(true);
     setRequestErrorKey("");
@@ -446,7 +472,7 @@ export default function MentorProfilePage() {
 
           {hasOpenRequest && !statusText && (
             <Alert severity="success" sx={{ mb: 2 }}>
-              {copy.alreadySentBanner}
+              {openRequestBanner(copy, openStatus)}
             </Alert>
           )}
 
@@ -469,11 +495,23 @@ export default function MentorProfilePage() {
               }}
             >
               {hasOpenRequest
-                ? copy.requestAlreadySent
+                ? openRequestCtaLabel(copy, openStatus)
                 : copy.requestMeeting}
             </Button>
 
             {hasOpenRequest && (
+              <Button
+                component={RouterLink}
+                to={ROUTES.APP_PERSONAL_AREA}
+                variant="outlined"
+                size="large"
+                fullWidth
+              >
+                {copy.viewInPersonalArea}
+              </Button>
+            )}
+
+            {showWithdraw && (
               <Button
                 variant="outlined"
                 color="inherit"

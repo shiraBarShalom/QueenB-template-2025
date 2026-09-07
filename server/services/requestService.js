@@ -73,7 +73,23 @@ async function createRequest(body = {}) {
   // The request and BOTH opening notifications commit together: the mentee's
   // "your request was sent" confirmation and the mentor's actionable "new
   // request" alert exist iff the MentoringRequest row does.
+  // Duplicate open-request check runs inside the same transaction so every
+  // create path (POST /api/requests and POST /api/mentors/:id/requests) shares
+  // one rule. No DB unique constraint — historical closed rows per pair are OK.
   return prisma.$transaction(async (tx) => {
+    const openRequest = await tx.mentoringRequest.findFirst({
+      where: {
+        menteeId,
+        mentorProfileId,
+        status: { notIn: CLOSED_REQUEST_STATUSES },
+      },
+      orderBy: { id: "desc" },
+      include: REQUEST_INCLUDE,
+    });
+    if (openRequest) {
+      throw new ApiError("Request already sent", 409, openRequest);
+    }
+
     const request = await tx.mentoringRequest.create({
       data: {
         menteeId,

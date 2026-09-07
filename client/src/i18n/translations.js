@@ -97,6 +97,8 @@ export const translations = {
         experienceUnknown: "ניסיון לא צוין",
         meetingMins: "פגישות של {count} דק׳",
         viewProfile: "לצפייה בפרופיל",
+        requestAlreadySent: "הבקשה כבר נשלחה",
+        meetingScheduled: "הפגישה נקבעה",
       },
     },
     mentorProfile: {
@@ -118,12 +120,19 @@ export const translations = {
       years: "{count} שנים",
       minutes: "{count} דקות",
       requestAlreadySent: "הבקשה כבר נשלחה",
+      meetingScheduled: "הפגישה נקבעה",
       requestMeeting: "בקשת פגישה",
       cancelRequest: "ביטול בקשה",
+      viewInPersonalArea: "לצפייה באזור האישי",
       alreadySentBanner: "הבקשה כבר נשלחה. ממתינה לתגובת המנטורית.",
+      meetingScheduledBanner:
+        "יש לך פגישה קבועה עם המנטורית הזו. ניהול הפגישה נעשה באזור האישי.",
+      pendingSlotsBanner:
+        "הבקשה פעילה — ממתינים לבחירת מועד. המשיכי באזור האישי.",
       status: {
         sent: "הבקשה נשלחה. ממתינה לתגובת המנטורית.",
         alreadySent: "הבקשה כבר נשלחה. ממתינה לתגובת המנטורית.",
+        meetingScheduled: "הפגישה כבר נקבעה עם המנטורית הזו.",
         cancelled: "הבקשה בוטלה. אפשר לשלוח בקשה חדשה.",
       },
       errors: {
@@ -629,6 +638,8 @@ export const translations = {
         experienceUnknown: "الخبرة غير مذكورة",
         meetingMins: "لقاءات لمدة {count} دقيقة",
         viewProfile: "عرض الملف",
+        requestAlreadySent: "تم إرسال الطلب مسبقًا",
+        meetingScheduled: "تم تحديد اللقاء",
       },
     },
     mentorProfile: {
@@ -650,12 +661,19 @@ export const translations = {
       years: "{count} سنوات",
       minutes: "{count} دقائق",
       requestAlreadySent: "تم إرسال الطلب مسبقًا",
+      meetingScheduled: "تم تحديد اللقاء",
       requestMeeting: "طلب لقاء",
       cancelRequest: "إلغاء الطلب",
+      viewInPersonalArea: "العرض في المنطقة الشخصية",
       alreadySentBanner: "تم إرسال الطلب مسبقًا. في انتظار رد المرشدة.",
+      meetingScheduledBanner:
+        "لديك لقاء محدد مع هذه المرشدة. أديري اللقاء من المنطقة الشخصية.",
+      pendingSlotsBanner:
+        "الطلب نشط — بانتظار اختيار موعد. تابعي من المنطقة الشخصية.",
       status: {
         sent: "تم إرسال الطلب. في انتظار رد المرشدة.",
         alreadySent: "تم إرسال الطلب مسبقًا. في انتظار رد المرشدة.",
+        meetingScheduled: "تم تحديد اللقاء بالفعل مع هذه المرشدة.",
         cancelled: "تم إلغاء الطلب. يمكنك إرسال طلب جديد.",
       },
       errors: {
@@ -1161,6 +1179,8 @@ export const translations = {
         experienceUnknown: "Experience not listed",
         meetingMins: "{count} min meetings",
         viewProfile: "View Profile",
+        requestAlreadySent: "Request already sent",
+        meetingScheduled: "Meeting scheduled",
       },
     },
     mentorProfile: {
@@ -1182,12 +1202,19 @@ export const translations = {
       years: "{count} years",
       minutes: "{count} minutes",
       requestAlreadySent: "Request already sent",
+      meetingScheduled: "Meeting scheduled",
       requestMeeting: "Request Meeting",
       cancelRequest: "Cancel Request",
+      viewInPersonalArea: "View in Personal Area",
       alreadySentBanner: "Request already sent. Waiting for mentor response.",
+      meetingScheduledBanner:
+        "You already have a scheduled meeting with this mentor. Manage it from your Personal Area.",
+      pendingSlotsBanner:
+        "Your request is active — waiting for a time slot. Continue in Personal Area.",
       status: {
         sent: "Request sent. Waiting for mentor response.",
         alreadySent: "Request already sent. Waiting for mentor response.",
+        meetingScheduled: "A meeting is already scheduled with this mentor.",
         cancelled: "Request cancelled. You can send a new request.",
       },
       errors: {
