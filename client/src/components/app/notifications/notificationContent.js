@@ -19,9 +19,9 @@ export function notificationTypeKey(n) {
     case "MEETING_MATCHED":
       return p.when && p.when.start ? "MEETING_MATCHED" : "MEETING_MATCHED_NO_TIME";
     case "RESCHEDULE_REQUIRED":
-      return p.reason === "moreSlots"
-        ? "RESCHEDULE_REQUIRED_MORE_SLOTS"
-        : "RESCHEDULE_REQUIRED_CANNOT_ATTEND";
+      if (p.reason === "moreSlots") return "RESCHEDULE_REQUIRED_MORE_SLOTS";
+      if (p.reason === "menteeSuggested") return "RESCHEDULE_REQUIRED_MENTEE_SUGGESTED";
+      return "RESCHEDULE_REQUIRED_CANNOT_ATTEND";
     case "REQUEST_CANCELLED":
       if (p.reason === "withdrawn") return "REQUEST_CANCELLED_WITHDRAWN";
       if (p.reason === "cannotAttendMeeting")
@@ -59,7 +59,9 @@ export function notificationNavTarget(n) {
         return p.byMentor ? "/app/personal-area" : "/app/mentor-area";
       return "/app/personal-area";
     case "RESCHEDULE_REQUIRED":
-      if (p.reason === "moreSlots") return "/app/mentor-area";
+      // mentee asked for another round, or suggested her own times -> mentor acts
+      if (p.reason === "moreSlots" || p.reason === "menteeSuggested")
+        return "/app/mentor-area";
       // post-match: notified party is whoever did NOT trigger it
       return p.byMentor ? "/app/personal-area" : "/app/mentor-area";
     default:

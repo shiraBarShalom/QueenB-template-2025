@@ -11,6 +11,7 @@ import {
   fetchMenteeScheduling,
   selectSlot,
   cannotAttend,
+  suggestSlots,
   withdrawRequest,
   rescheduleRequest,
   cannotAttendMeeting,
@@ -23,6 +24,7 @@ import ProposedSlotsCard from "./ProposedSlotsCard";
 import MenteeMeetingCard from "./MenteeMeetingCard";
 import MenteeRequestStatusCard from "./MenteeRequestStatusCard";
 import ConfirmDialog from "./ConfirmDialog";
+import SuggestTimesDialog from "./SuggestTimesDialog";
 
 /**
  * Self-contained scheduling block for the mentee's Personal Area (Part 4+).
@@ -46,6 +48,7 @@ export default function MenteeSchedulingSection() {
   const [phase, setPhase] = useState("loading"); // "loading" | "ready" | "error"
   const [items, setItems] = useState([]);
   const [dialog, setDialog] = useState(null); // { kind, request, offeredSlotId? }
+  const [suggestTarget, setSuggestTarget] = useState(null); // request (counter-proposal)
   const [cannotAttendTarget, setCannotAttendTarget] = useState(null); // request
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
@@ -79,11 +82,19 @@ export default function MenteeSchedulingSection() {
 
   const askSelect = (request, offeredSlotId) =>
     setDialog({ kind: "select", request, offeredSlotId });
-  const askCannotAttend = (request) =>
-    setDialog({
-      kind: request.retryCount >= FINAL_RETRY ? "cannotAttendFinal" : "cannotAttendRetry",
-      request,
-    });
+  // "None of these work": on a non-final round the mentee is offered the
+  // counter-proposal form (suggest her own times); on the final round the only
+  // remaining move is the terminal CANNOT_ATTEND, so keep that confirm.
+  const askCannotAttend = (request) => {
+    if (request.retryCount >= FINAL_RETRY) {
+      setDialog({ kind: "cannotAttendFinal", request });
+    } else {
+      setSuggestTarget(request);
+    }
+  };
+  const closeSuggest = () => {
+    if (!submitting) setSuggestTarget(null);
+  };
   const askWithdraw = (request) => setDialog({ kind: "withdraw", request });
   const askReschedule = (request) => setDialog({ kind: "reschedule", request });
   const askCannotAttendMeeting = (request) => setCannotAttendTarget(request);
@@ -118,6 +129,65 @@ export default function MenteeSchedulingSection() {
         // 400 / network — keep the dialog open so she can fix the note or cancel.
         setToast({ severity: "error", message: c.toast.error });
       }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Shared 409/404/403 handling for the counter-proposal dialog: the request
+  // moved on, so never fake success — close and reconcile from the server.
+  const handleSuggestError = (err) => {
+    if (err.status === 409) {
+      setSuggestTarget(null);
+      setToast({ severity: "warning", message: c.toast.conflict });
+      load({ silent: true });
+    } else if (err.status === 404) {
+      setSuggestTarget(null);
+      setToast({ severity: "warning", message: c.toast.notFound });
+      load({ silent: true });
+    } else if (err.status === 403) {
+      setSuggestTarget(null);
+      setToast({ severity: "error", message: c.toast.forbidden });
+      load({ silent: true });
+    } else {
+      // 400 / network — keep the dialog open so she can fix the times or cancel.
+      setToast({ severity: "error", message: c.toast.error });
+    }
+  };
+
+  // Mentee submits her own 1–3 suggested times (SUGGEST_SLOTS).
+  const runSuggest = async (payloadSlots) => {
+    if (submitting || !suggestTarget) return;
+    setSubmitting(true);
+    try {
+      await suggestSlots(suggestTarget.id, actingUserId, payloadSlots);
+      setSuggestTarget(null);
+      setToast({ severity: "success", message: c.toast.suggestSuccess });
+      load({ silent: true });
+    } catch (err) {
+      handleSuggestError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Fallback from the same dialog: don't suggest — just ask the mentor for a
+  // fresh round (the original CANNOT_ATTEND retry behaviour).
+  const runSuggestFallback = async () => {
+    if (submitting || !suggestTarget) return;
+    const request = suggestTarget;
+    setSubmitting(true);
+    try {
+      const updated = await cannotAttend(request.id, actingUserId);
+      const closed = updated && updated.status === "CANCELLED";
+      setSuggestTarget(null);
+      setToast({
+        severity: closed ? "info" : "success",
+        message: closed ? c.toast.closedSuccess : c.toast.retrySuccess,
+      });
+      load({ silent: true });
+    } catch (err) {
+      handleSuggestError(err);
     } finally {
       setSubmitting(false);
     }
@@ -360,6 +430,15 @@ export default function MenteeSchedulingSection() {
         pending={submitting}
         onCancel={closeCannotAttendMeeting}
         onConfirm={runCannotAttendMeeting}
+      />
+
+      <SuggestTimesDialog
+        open={Boolean(suggestTarget)}
+        request={suggestTarget}
+        pending={submitting}
+        onSubmit={runSuggest}
+        onFallback={runSuggestFallback}
+        onCancel={closeSuggest}
       />
 
       <Snackbar

@@ -3,9 +3,11 @@ import { Link as RouterLink } from "react-router-dom";
 import { Avatar, Box, Button, Chip, Stack, Typography } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import { mentorProposeSlotsPath } from "../../../constants/routes";
+import { formatDayLabel, formatTimeRange } from "../../../utils/slotTime";
 import StatusChip from "../StatusChip";
 
 /**
@@ -38,10 +40,17 @@ function initials(name) {
     .toUpperCase();
 }
 
-export default function IncomingRequestCard({ request, busy = false, onReject }) {
+export default function IncomingRequestCard({
+  request,
+  busy = false,
+  onReject,
+  onApprove,
+}) {
   const { t, lang } = useLanguage();
   const c = t.app.mentorArea.incoming;
   const mentee = request.mentee || {};
+  const suggestion = request.menteeSuggestion || null;
+  const suggestedSlots = (suggestion && suggestion.slots) || [];
 
   const roleLine = [mentee.jobTitle, mentee.workplace].filter(Boolean).join(" · ");
 
@@ -125,6 +134,61 @@ export default function IncomingRequestCard({ request, busy = false, onReject })
         {fill(c.submittedAt, { date: submitted })}
       </Typography>
 
+      {suggestedSlots.length > 0 && (
+        <Box
+          sx={{
+            mt: 1.5,
+            p: 1.5,
+            borderRadius: "12px",
+            border: "1px solid rgba(225,29,106,0.24)",
+            backgroundColor: "rgba(225,29,106,0.06)",
+          }}
+        >
+          <Typography
+            component="h4"
+            sx={{ fontSize: "0.9rem", fontWeight: 800, color: "#4a1528" }}
+          >
+            {fill(c.menteeSuggestedTitle, { name: mentee.fullName || "" })}
+          </Typography>
+          <Typography sx={{ mt: 0.25, fontSize: "0.8rem", color: "#6d3049" }}>
+            {c.menteeSuggestedHint}
+          </Typography>
+          <Stack component="ul" role="list" spacing={1} sx={{ listStyle: "none", p: 0, mt: 1.25, mb: 0 }}>
+            {suggestedSlots.map((slot) => (
+              <Stack
+                key={slot.id}
+                component="li"
+                direction={{ xs: "column", sm: "row" }}
+                spacing={1}
+                alignItems={{ xs: "stretch", sm: "center" }}
+                justifyContent="space-between"
+                sx={{
+                  p: 1,
+                  borderRadius: "10px",
+                  backgroundColor: "#fff",
+                  border: "1px solid rgba(225,29,106,0.14)",
+                }}
+              >
+                <Typography sx={{ fontWeight: 700, color: "#4a1528" }}>
+                  {formatDayLabel(slot.startTime, lang)} ·{" "}
+                  {formatTimeRange(slot.startTime, slot.endTime, lang)}
+                </Typography>
+                <Button
+                  onClick={() => onApprove && onApprove(request, slot)}
+                  disabled={busy || !onApprove}
+                  variant="contained"
+                  size="small"
+                  startIcon={<CheckRoundedIcon />}
+                  sx={{ minHeight: 40, fontWeight: 700, whiteSpace: "nowrap" }}
+                >
+                  {c.approveCta}
+                </Button>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={1}
@@ -144,11 +208,11 @@ export default function IncomingRequestCard({ request, busy = false, onReject })
         <Button
           component={RouterLink}
           to={mentorProposeSlotsPath(request.id)}
-          variant="contained"
+          variant={suggestedSlots.length > 0 ? "outlined" : "contained"}
           startIcon={<ScheduleRoundedIcon />}
           sx={{ minHeight: 44, fontWeight: 700 }}
         >
-          {c.proposeCta}
+          {suggestedSlots.length > 0 ? c.proposeOwnCta : c.proposeCta}
         </Button>
       </Stack>
     </Box>

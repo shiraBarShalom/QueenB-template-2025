@@ -612,6 +612,155 @@ async function main() {
     }
   }
 
+  // === 20. Mentee counter-proposal (SUGGEST_SLOTS + APPROVE_SUGGESTED_SLOT) ===
+  console.log("\n[20] Mentee-suggested times");
+  {
+    const latestRound = (id) =>
+      prisma.schedulingRound.findFirst({
+        where: { requestId: id },
+        orderBy: { roundNumber: "desc" },
+        include: { offeredSlots: true },
+      });
+    const notifTypes = (recipientId, requestId, type) =>
+      prisma.notification.findMany({ where: { recipientId, requestId, type } });
+
+    // 20a — happy path: propose -> suggest -> approve -> exactly one Meeting
+    {
+      const r = await newRequest();
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await sched.suggestSlots(r.id, MENTEE, futureSlots(3));
+
+      assert("suggest -> WAITING_FOR_MENTOR_SLOTS, retryCount 1",
+        (await statusOf(r.id)) === "WAITING_FOR_MENTOR_SLOTS" && (await retryOf(r.id)) === 1);
+      const sround = await latestRound(r.id);
+      assert("latest round is MENTEE-authored EXTRA_SLOTS with 3 slots",
+        sround.proposedByRole === "MENTEE" && sround.type === "EXTRA_SLOTS" && sround.offeredSlots.length === 3);
+      const mentorNotifs = await notifTypes(MENTOR, r.id, "RESCHEDULE_REQUIRED");
+      assert("mentor got RESCHEDULE_REQUIRED reason=menteeSuggested",
+        mentorNotifs.some((n) => n.payload && n.payload.reason === "menteeSuggested"));
+
+      const chosen = sround.offeredSlots[1];
+      await sched.approveSuggestedSlot(r.id, MENTOR, chosen.id);
+      assert("approve -> MATCHED", (await statusOf(r.id)) === "MATCHED");
+      const meetings = await prisma.meeting.findMany({ where: { requestId: r.id } });
+      assert("exactly one Meeting on the approved slot",
+        meetings.length === 1 && meetings[0].selectedSlotId === chosen.id && meetings[0].status === "SCHEDULED");
+      const matched = await prisma.notification.count({
+        where: { requestId: r.id, type: "MEETING_MATCHED" },
+      });
+      assert("both participants got MEETING_MATCHED", matched === 2);
+    }
+
+    // 20b — wrong actor
+    {
+      const r = await newRequest();
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await expectStatus("mentor cannot SUGGEST_SLOTS -> 403", () => sched.suggestSlots(r.id, MENTOR, futureSlots(2)), 403);
+      await expectStatus("other mentee cannot SUGGEST_SLOTS -> 403", () => sched.suggestSlots(r.id, MENTEE2, futureSlots(2)), 403);
+      await sched.suggestSlots(r.id, MENTEE, futureSlots(2));
+      const sround = await latestRound(r.id);
+      await expectStatus("mentee cannot APPROVE_SUGGESTED_SLOT -> 403",
+        sched.approveSuggestedSlot(r.id, MENTEE, sround.offeredSlots[0].id), 403);
+      await expectStatus("other mentor cannot APPROVE_SUGGESTED_SLOT -> 403",
+        sched.approveSuggestedSlot(r.id, MENTOR2, sround.offeredSlots[0].id), 403);
+    }
+
+    // 20c — payload validation
+    {
+      const r = await newRequest();
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await expectStatus("suggest 0 slots -> 400", () => sched.suggestSlots(r.id, MENTEE, []), 400);
+      await expectStatus("suggest 4 slots -> 400", () => sched.suggestSlots(r.id, MENTEE, futureSlots(4)), 400);
+      const dup = futureSlots(1)[0];
+      await expectStatus("suggest duplicate start -> 400", () => sched.suggestSlots(r.id, MENTEE, [dup, dup]), 400);
+      await expectStatus("suggest past slot -> 400", () => sched.suggestSlots(r.id, MENTEE, [
+        { startTime: new Date(Date.now() - HOUR).toISOString(), endTime: new Date(Date.now() - HOUR + 30 * 60000).toISOString() },
+      ]), 400);
+      assert("request untouched after bad suggestions",
+        (await statusOf(r.id)) === "WAITING_FOR_MENTEE_SELECTION" && (await retryOf(r.id)) === 0);
+    }
+
+    // 20d — fallback: mentor may still PROPOSE her own set; old suggested slot then dies
+    {
+      const r = await newRequest();
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await sched.suggestSlots(r.id, MENTEE, futureSlots(2));
+      const sround = await latestRound(r.id);
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2)); // mentor counters instead of approving
+      assert("mentor counter -> WAITING_FOR_MENTEE_SELECTION", (await statusOf(r.id)) === "WAITING_FOR_MENTEE_SELECTION");
+      await expectStatus("approve a superseded mentee slot -> 409",
+        sched.approveSuggestedSlot(r.id, MENTOR, sround.offeredSlots[0].id), 409);
+      const newRound = await latestRound(r.id);
+      await sched.selectSlot(r.id, MENTEE, newRound.offeredSlots[0].id);
+      assert("mentee can still select the mentor's countered slot -> MATCHED", (await statusOf(r.id)) === "MATCHED");
+    }
+
+    // 20e — approve is not valid on an ordinary mentor-owed round
+    {
+      const r = await newRequest();
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await sched.cannotAttend(r.id, MENTEE); // WAITING_FOR_MENTOR_SLOTS, mentor-owed (no mentee round)
+      const round1 = await latestRound(r.id);
+      await expectStatus("approve on a mentor-owed round -> 409",
+        sched.approveSuggestedSlot(r.id, MENTOR, round1.offeredSlots[0].id), 409);
+    }
+
+    // 20f — concurrency: two approvals of different slots, exactly one Meeting
+    {
+      const r = await newRequest();
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await sched.suggestSlots(r.id, MENTEE, futureSlots(3));
+      const sround = await latestRound(r.id);
+      const results = await Promise.allSettled([
+        sched.approveSuggestedSlot(r.id, MENTOR, sround.offeredSlots[0].id),
+        sched.approveSuggestedSlot(r.id, MENTOR, sround.offeredSlots[1].id),
+      ]);
+      const fulfilled = results.filter((x) => x.status === "fulfilled").length;
+      assert("exactly one approval succeeded", fulfilled === 1);
+      assert("exactly one Meeting created", (await meetingCount(r.id)) === 1);
+      assert("request MATCHED", (await statusOf(r.id)) === "MATCHED");
+    }
+
+    // 20g — retry cap: SUGGEST_SLOTS has no row once retryCount === 2
+    {
+      const r = await newRequest();
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await sched.suggestSlots(r.id, MENTEE, futureSlots(2));       // rc 0 -> 1
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await sched.cannotAttend(r.id, MENTEE);                       // rc 1 -> 2
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      assert("retryCount is at the cap", (await retryOf(r.id)) === 2);
+      await expectStatus("SUGGEST_SLOTS at the retry cap -> 409", () => sched.suggestSlots(r.id, MENTEE, futureSlots(2)), 409);
+      await sched.cannotAttend(r.id, MENTEE);
+      assert("CANNOT_ATTEND at the cap still closes the request", (await statusOf(r.id)) === "CANCELLED");
+    }
+
+    // 20h — mentor double-booking blocks approving an overlapping suggested slot
+    {
+      const B = Date.now() + 300 * DAY;
+      const booked = await prisma.mentoringRequest.create({
+        data: { menteeId: MENTEE2, mentorProfileId: mentorProfile.id, status: "WAITING_FOR_MENTOR_SLOTS" },
+      });
+      await sched.proposeSlots(booked.id, MENTOR, [
+        { startTime: new Date(B).toISOString(), endTime: new Date(B + HOUR).toISOString() },
+        { startTime: new Date(B + 5 * DAY).toISOString(), endTime: new Date(B + 5 * DAY + HOUR).toISOString() },
+      ]);
+      const bround = await latestRound(booked.id);
+      await sched.selectSlot(booked.id, MENTEE2, bround.offeredSlots.find((x) => x.startTime.getTime() === B).id);
+
+      const r = await newRequest();
+      await sched.proposeSlots(r.id, MENTOR, futureSlots(2));
+      await sched.suggestSlots(r.id, MENTEE, [
+        { startTime: new Date(B + 15 * 60000).toISOString(), endTime: new Date(B + 45 * 60000).toISOString() }, // overlaps
+      ]);
+      const sround = await latestRound(r.id);
+      await expectStatus("approve a slot overlapping the mentor's meeting -> 409",
+        sched.approveSuggestedSlot(r.id, MENTOR, sround.offeredSlots[0].id), 409);
+      assert("request stays WAITING_FOR_MENTOR_SLOTS after blocked approval",
+        (await statusOf(r.id)) === "WAITING_FOR_MENTOR_SLOTS" && (await meetingCount(r.id)) === 0);
+    }
+  }
+
   console.log(`\n${"=".repeat(50)}\n  PASSED: ${passed}    FAILED: ${failed}\n${"=".repeat(50)}`);
 }
 

@@ -107,6 +107,28 @@ export async function proposeMentoringRequestSlots(requestId, actingUserId, slot
 }
 
 /**
+ * POST /api/requests/:requestId/approve-suggested-slot
+ * Body: { actingUserId, offeredSlotId }
+ * schedulingService.approveSuggestedSlot — the mentor accepts ONE of the
+ * mentee's suggested times (current round is a mentee counter-proposal).
+ * Same outcome as the mentee's select-slot: WAITING_FOR_MENTOR_SLOTS -> MATCHED,
+ * exactly one Meeting created via the shared path.
+ *   403 wrong actor · 409 current round is not a mentee suggestion / slot not in
+ *   it / past / mentor double-booked / changed concurrently.
+ */
+export async function approveSuggestedSlot(requestId, actingUserId, offeredSlotId) {
+  try {
+    const res = await http.post(`/requests/${requestId}/approve-suggested-slot`, {
+      actingUserId,
+      offeredSlotId,
+    });
+    return res.data.data;
+  } catch (err) {
+    throw toClientError(err);
+  }
+}
+
+/**
  * POST /api/requests/:requestId/reschedule   Body: { actingUserId }
  * Part 14 — the mentor can no longer attend an already-scheduled meeting.
  * schedulingService.reschedule: MATCHED -> WAITING_FOR_MENTOR_SLOTS (once only),

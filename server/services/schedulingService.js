@@ -25,6 +25,10 @@ const { ApiError } = require("../utils/prismaError");
 const { parseId } = require("./userService");
 const { REQUEST_INCLUDE } = require("./requestService");
 const { createNotifications } = require("./notificationService");
+// Outbound email is a NOTIFICATION SIDE EFFECT only — never part of a
+// transaction. It is dispatched AFTER runAction() has committed (see
+// selectSlot), fire-and-forget, and can never fail or delay a scheduling action.
+const emailService = require("./emailService");
 
 // ----------------------------------------------------------------------------
 // Notification side effects
@@ -64,6 +68,15 @@ const ACTION = {
   REJECT: "REJECT",
   SELECT_SLOT: "SELECT_SLOT",
   CANNOT_ATTEND: "CANNOT_ATTEND",
+  // Mentee counter-proposal: the mentor proposed times, none fit, and instead of
+  // spending a CANNOT_ATTEND to send the request back empty-handed the mentee
+  // offers 1-3 times that DO work for her. Shares the CANNOT_ATTEND retry budget
+  // (bumps retryCount, capped at RETRY_LIMIT) so it can never open a new loop.
+  SUGGEST_SLOTS: "SUGGEST_SLOTS",
+  // Mentor picks ONE of the mentee's suggested times. Same outcome as the mentee
+  // SELECT_SLOT (-> MATCHED, one Meeting via the shared path) but performed by
+  // the mentor, and only valid while the current round is a mentee counter-proposal.
+  APPROVE_SUGGESTED_SLOT: "APPROVE_SUGGESTED_SLOT",
   WITHDRAW: "WITHDRAW",
   CANCEL: "CANCEL",
   // Part 14: a meeting is already scheduled (MATCHED) but one side can no longer
@@ -204,6 +217,21 @@ const TRANSITIONS = [
     bumpsRetryCount: false,
   },
 
+  // Mentor approves one of the mentee's suggested times (the current round is a
+  // mentee counter-proposal — see SUGGEST_SLOTS below). The request is
+  // WAITING_FOR_MENTOR_SLOTS exactly as after a CANNOT_ATTEND, so this row and
+  // PROPOSE_SLOTS / REJECT are all legal from here; approveSuggestedSlot's side
+  // effect additionally requires the current round to be MENTEE-authored, so it
+  // can never fire on an ordinary mentor-owed round.
+  // PENDING_MENTOR + Mentor APPROVE_SUGGESTED_SLOT -> SCHEDULED
+  {
+    action: ACTION.APPROVE_SUGGESTED_SLOT,
+    from: STATUS.WAITING_FOR_MENTOR_SLOTS,
+    role: ROLE.MENTOR,
+    to: STATUS.MATCHED,
+    bumpsRetryCount: false,
+  },
+
   // Mentee abandons the request before any times exist.
   // PENDING_MENTOR + WITHDRAW -> CANCELLED. Does NOT touch retryCount.
   {
@@ -257,6 +285,22 @@ const TRANSITIONS = [
     when: (r) => r.retryCount >= RETRY_LIMIT,
     to: STATUS.CANCELLED,
     bumpsRetryCount: false,
+  },
+
+  // Mentee counter-proposal while still under the retry limit: instead of
+  // CANNOT_ATTEND (send it back empty and make the mentor invent another set),
+  // the mentee offers 1-3 times that work for her. Uses the SAME retry budget as
+  // CANNOT_ATTEND (bumps retryCount, gated on retryCount < RETRY_LIMIT), so the
+  // round ladder still terminates. At the cap the mentee has no SUGGEST_SLOTS
+  // row (guardTransition -> 409); she uses CANNOT_ATTEND / WITHDRAW as before.
+  // PENDING_MENTEE + SUGGEST_SLOTS [retryCount < 2] -> PENDING_MENTOR, +1 retry.
+  {
+    action: ACTION.SUGGEST_SLOTS,
+    from: STATUS.WAITING_FOR_MENTEE_SELECTION,
+    role: ROLE.MENTEE,
+    when: (r) => r.retryCount < RETRY_LIMIT,
+    to: STATUS.WAITING_FOR_MENTOR_SLOTS,
+    bumpsRetryCount: true,
   },
 
   // Mentor cancels after offering times (e.g. a volunteer becomes unavailable).
@@ -681,101 +725,353 @@ function proposeSlots(requestId, actingUserId, rawSlots) {
 }
 
 // ----------------------------------------------------------------------------
+// Shared meeting creation — the ONE authoritative path from "an offered slot in
+// the current round" to a SCHEDULED Meeting + MATCHED request.
+// ----------------------------------------------------------------------------
+// Used by BOTH SELECT_SLOT (mentee picks one of the mentor's proposed times)
+// and APPROVE_SUGGESTED_SLOT (mentor picks one of the mentee's suggested times).
+// There is deliberately no second Meeting-creation implementation.
+//
+// Runs inside the caller's interactive transaction (`tx`), after
+// applyStatusChange has already won the (status, retryCount) compare-and-set, so
+// a failure here rolls the whole action back. The chosen slot must pass:
+//   1. it belongs to the CURRENT round (highest roundNumber) of THIS request
+//   2. that round's author matches `expectProposedByRole` when given
+//      (APPROVE_SUGGESTED_SLOT requires a MENTEE-authored round; SELECT_SLOT
+//      passes null — it does not care)
+//   3. its startTime is still in the future
+//   4. when `checkMentorDoubleBooking`, its interval does not overlap one of the
+//      mentor's live meetings (SELECT_SLOT skips this — the mentor already
+//      cleared her own proposed times in proposeSlots; APPROVE_SUGGESTED_SLOT
+//      needs it because the mentee's times never went through that guard)
+// Returns the confirmationCtx snapshot for the caller's post-commit email.
+async function createMeetingFromCurrentRound(
+  tx,
+  request,
+  offeredSlotId,
+  { expectProposedByRole = null, checkMentorDoubleBooking = false } = {}
+) {
+  const currentRound = await tx.schedulingRound.findFirst({
+    where: { requestId: request.id },
+    orderBy: { roundNumber: "desc" },
+    include: { offeredSlots: true },
+  });
+  // Should be impossible in the from-states these actions allow (PROPOSE_SLOTS /
+  // SUGGEST_SLOTS always create a round in the same transaction as the status
+  // flip), but fail loudly rather than schedule nothing.
+  if (!currentRound) {
+    throw new ApiError(
+      `Request ${request.id} is ${request.status} but has no proposal round`,
+      409
+    );
+  }
+  if (
+    expectProposedByRole != null &&
+    currentRound.proposedByRole !== expectProposedByRole
+  ) {
+    throw new ApiError(
+      `The current round for request ${request.id} is not a ${expectProposedByRole.toLowerCase()} proposal`,
+      409
+    );
+  }
+
+  const slot = currentRound.offeredSlots.find((s) => s.id === offeredSlotId);
+  if (!slot) {
+    // Covers: slot id from an older round, from another request, or made up.
+    throw new ApiError(
+      `Offered slot ${offeredSlotId} is not part of the current proposal round for request ${request.id}`,
+      409
+    );
+  }
+  if (slot.startTime <= new Date()) {
+    throw new ApiError(
+      `Offered slot ${offeredSlotId} has already started and can no longer be selected`,
+      409
+    );
+  }
+
+  if (checkMentorDoubleBooking) {
+    // Re-checked here (inside the tx) so a slot that was free when the tab
+    // loaded is still rejected if the mentor was booked meanwhile.
+    const conflicts = await findMentorSlotConflicts(
+      tx,
+      request.mentorProfileId,
+      [slot],
+      new Date(),
+      request.id
+    );
+    if (conflicts.length > 0) {
+      throw new ApiError(
+        `Slot ${slot.startTime.toISOString()}–${slot.endTime.toISOString()} ` +
+          `overlaps an existing scheduled meeting for this mentor`,
+        409
+      );
+    }
+  }
+
+  // attemptNumber is (highest so far) + 1. Normally 1; after a post-match
+  // RESCHEDULE the previous Meeting is still on the request (status RESCHEDULED,
+  // kept for history) so this is attempt 2, 3, ... The
+  // @@unique([requestId, attemptNumber]) constraint backs this.
+  const lastMeeting = await tx.meeting.findFirst({
+    where: { requestId: request.id },
+    orderBy: { attemptNumber: "desc" },
+    select: { attemptNumber: true },
+  });
+  const attemptNumber = (lastMeeting ? lastMeeting.attemptNumber : 0) + 1;
+
+  const meeting = await tx.meeting.create({
+    data: {
+      requestId: request.id,
+      selectedSlotId: slot.id,
+      attemptNumber,
+      scheduledStart: slot.startTime,
+      scheduledEnd: slot.endTime,
+      status: "SCHEDULED", // MeetingStatus.SCHEDULED == request MATCHED
+    },
+  });
+
+  // A meeting is on the calendar — both people need to see it.
+  const p = participants(request);
+  const when = { start: slot.startTime, end: slot.endTime };
+  await createNotifications(tx, [
+    {
+      recipientId: p.menteeId,
+      type: "MEETING_MATCHED",
+      requestId: request.id,
+      meetingId: meeting.id,
+      payload: { mentorName: p.mentorName, when },
+    },
+    {
+      recipientId: p.mentorUserId,
+      type: "MEETING_MATCHED",
+      requestId: request.id,
+      meetingId: meeting.id,
+      payload: { menteeName: p.menteeName, when },
+    },
+  ]);
+
+  // Snapshot for the post-commit confirmation email. Pure data — no I/O.
+  // request is REQUEST_INCLUDE shaped, so mentee/mentor email + fullName are
+  // already loaded.
+  return {
+    mentee: {
+      email: request.mentee ? request.mentee.email : null,
+      name: request.mentee ? request.mentee.fullName : null,
+    },
+    mentor: {
+      email:
+        request.mentorProfile && request.mentorProfile.user
+          ? request.mentorProfile.user.email
+          : null,
+      name:
+        request.mentorProfile && request.mentorProfile.user
+          ? request.mentorProfile.user.fullName
+          : null,
+    },
+    meeting: {
+      id: meeting.id,
+      scheduledStart: meeting.scheduledStart,
+      scheduledEnd: meeting.scheduledEnd,
+    },
+  };
+}
+
+// Fire the meeting-confirmation email after the transaction has committed.
+// Fire-and-forget: it can neither delay nor fail the scheduling action.
+function dispatchConfirmationEmail(confirmationCtx) {
+  if (!confirmationCtx) return;
+  emailService
+    .sendMeetingScheduledEmail(confirmationCtx)
+    .catch((err) =>
+      // eslint-disable-next-line no-console
+      console.error(
+        "[email] meeting confirmation dispatch failed:",
+        err && err.message
+      )
+    );
+}
+
+// ----------------------------------------------------------------------------
 // SELECT_SLOT — mentee locks in exactly one offered time.
 // ----------------------------------------------------------------------------
 
 // PENDING_MENTEE + Mentee SELECT_SLOT -> SCHEDULED (status MATCHED).
-// The chosen slot must pass THREE checks, all inside the same transaction as
-// the status flip so a bad choice rolls the whole thing back:
-//   1. it belongs to a SchedulingRound of THIS request        (not another request's slot)
-//   2. that round is the CURRENT round (highest roundNumber)   (not a superseded round)
-//   3. its startTime is still in the future                    (not a stale slot)
-// On success it creates the request's Meeting (attemptNumber 1 for this MVP —
-// SCHEDULED is terminal, so there is never a 2nd attempt here), pointing at the
-// chosen OfferedSlot. "Exactly one selected slot" is guaranteed by creating
-// exactly one Meeting; Meeting.selectedSlotId is @unique as a DB backstop.
+// All work is inside one transaction with the status flip (see
+// createMeetingFromCurrentRound). "Exactly one selected slot" is guaranteed by
+// creating exactly one Meeting; Meeting.selectedSlotId is @unique as a DB
+// backstop. Duplicate protection is structural: a repeated / double-click
+// SELECT_SLOT fails in guardTransition (MATCHED has no SELECT_SLOT row).
 function selectSlot(requestId, actingUserId, rawOfferedSlotId) {
   const offeredSlotId = parseId(rawOfferedSlotId, "offeredSlotId");
 
-  return runAction(
+  // Captured inside the transaction, consumed ONLY AFTER it commits.
+  let confirmationCtx = null;
+
+  const run = runAction(
     requestId,
     ACTION.SELECT_SLOT,
     actingUserId,
     async (tx, request) => {
-      // Current round = the highest roundNumber for this request.
-      const currentRound = await tx.schedulingRound.findFirst({
+      confirmationCtx = await createMeetingFromCurrentRound(
+        tx,
+        request,
+        offeredSlotId
+      );
+    }
+  );
+
+  return run.then((result) => {
+    dispatchConfirmationEmail(confirmationCtx);
+    return result;
+  });
+}
+
+// ----------------------------------------------------------------------------
+// SUGGEST_SLOTS — mentee counter-proposal (mentor's times did not fit).
+// ----------------------------------------------------------------------------
+
+// A mentee counter-proposal carries 1-3 times (she may know only one that
+// works). Same per-slot rules as a mentor proposal, plus a duplicate-start
+// guard. Out-of-range / malformed lists are REJECTED, never clamped.
+const MIN_SUGGESTED_SLOTS = 1;
+const MAX_SUGGESTED_SLOTS = 3;
+
+function normalizeSuggestedSlots(raw, now) {
+  if (!Array.isArray(raw)) {
+    throw new ApiError("slots must be an array of { startTime, endTime }", 400);
+  }
+  if (raw.length < MIN_SUGGESTED_SLOTS || raw.length > MAX_SUGGESTED_SLOTS) {
+    throw new ApiError(
+      `A suggestion must contain ${MIN_SUGGESTED_SLOTS}-${MAX_SUGGESTED_SLOTS} slots (got ${raw.length})`,
+      400
+    );
+  }
+  const seen = new Set();
+  return raw.map((slot, i) => {
+    const startTime = new Date(slot && slot.startTime);
+    const endTime = new Date(slot && slot.endTime);
+    if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+      throw new ApiError(
+        `slots[${i}]: startTime and endTime must be valid date strings`,
+        400
+      );
+    }
+    if (endTime <= startTime) {
+      throw new ApiError(`slots[${i}]: endTime must be after startTime`, 400);
+    }
+    if (startTime <= now) {
+      throw new ApiError(`slots[${i}]: startTime must be in the future`, 400);
+    }
+    const key = startTime.getTime();
+    if (seen.has(key)) {
+      throw new ApiError(`slots[${i}]: duplicate start time`, 400);
+    }
+    seen.add(key);
+    return { startTime, endTime };
+  });
+}
+
+// PENDING_MENTEE + Mentee SUGGEST_SLOTS [retryCount < 2]
+//   -> PENDING_MENTOR, retryCount += 1.
+// Related writes (same transaction as the status flip):
+//   - a new SchedulingRound, roundNumber = (previous max) + 1, marked
+//     proposedByRole = MENTEE — the ONLY thing that tells the mentor's dashboard
+//     this WAITING_FOR_MENTOR_SLOTS is "approve the mentee's times" rather than
+//     "you owe a round".
+//   - its OfferedSlot rows (1-3, validated by normalizeSuggestedSlots)
+//   - a RESCHEDULE_REQUIRED notification to the mentor
+//     (payload.reason = "menteeSuggested").
+// Type mirrors proposeSlots: EXTRA_SLOTS normally, RESCHEDULE_BEFORE_MEETING if
+// the request has already been through a post-match reschedule. The retry bump
+// (bumpsRetryCount on the transition) shares the CANNOT_ATTEND budget, so the
+// round ladder still terminates and no new loop is introduced.
+function suggestSlots(requestId, actingUserId, rawSlots) {
+  const slots = normalizeSuggestedSlots(rawSlots, new Date());
+
+  return runAction(
+    requestId,
+    ACTION.SUGGEST_SLOTS,
+    actingUserId,
+    async (tx, request) => {
+      const last = await tx.schedulingRound.findFirst({
         where: { requestId: request.id },
         orderBy: { roundNumber: "desc" },
-        include: { offeredSlots: true },
+        select: { roundNumber: true },
       });
-      // Should be impossible in PENDING_MENTEE (PROPOSE_SLOTS always creates a
-      // round in the same transaction as the status flip), but fail loudly
-      // rather than schedule nothing.
-      if (!currentRound) {
-        throw new ApiError(
-          `Request ${request.id} is ${request.status} but has no proposal round`,
-          409
-        );
-      }
+      const roundNumber = (last ? last.roundNumber : 0) + 1;
 
-      const slot = currentRound.offeredSlots.find((s) => s.id === offeredSlotId);
-      if (!slot) {
-        // Covers: slot id from an older round, from another request, or made up.
-        throw new ApiError(
-          `Offered slot ${offeredSlotId} is not part of the current proposal round for request ${request.id}`,
-          409
-        );
-      }
-      if (slot.startTime <= new Date()) {
-        throw new ApiError(
-          `Offered slot ${offeredSlotId} has already started and can no longer be selected`,
-          409
-        );
-      }
+      // roundNumber is always > 1 here (a mentor round was proposed first).
+      const type = request.rescheduleAfterMatchUsed
+        ? "RESCHEDULE_BEFORE_MEETING"
+        : "EXTRA_SLOTS";
 
-      // attemptNumber is (highest so far) + 1. Normally 1; after a post-match
-      // RESCHEDULE the previous Meeting is still on the request (status
-      // RESCHEDULED, kept for history) so this is attempt 2, 3, ... The
-      // @@unique([requestId, attemptNumber]) constraint backs this.
-      const lastMeeting = await tx.meeting.findFirst({
-        where: { requestId: request.id },
-        orderBy: { attemptNumber: "desc" },
-        select: { attemptNumber: true },
-      });
-      const attemptNumber = (lastMeeting ? lastMeeting.attemptNumber : 0) + 1;
-
-      const meeting = await tx.meeting.create({
+      await tx.schedulingRound.create({
         data: {
           requestId: request.id,
-          selectedSlotId: slot.id,
-          attemptNumber,
-          scheduledStart: slot.startTime,
-          scheduledEnd: slot.endTime,
-          status: "SCHEDULED", // MeetingStatus.SCHEDULED == request MATCHED
+          roundNumber,
+          type,
+          proposedByRole: "MENTEE",
+          offeredSlots: { create: slots },
         },
       });
 
-      // A meeting is on the calendar — both people need to see it.
+      // The ball is in the mentor's court — she has times to approve or counter.
       const p = participants(request);
-      const when = { start: slot.startTime, end: slot.endTime };
       await createNotifications(tx, [
         {
-          recipientId: p.menteeId,
-          type: "MEETING_MATCHED",
-          requestId: request.id,
-          meetingId: meeting.id,
-          payload: { mentorName: p.mentorName, when },
-        },
-        {
           recipientId: p.mentorUserId,
-          type: "MEETING_MATCHED",
+          type: "RESCHEDULE_REQUIRED",
           requestId: request.id,
-          meetingId: meeting.id,
-          payload: { menteeName: p.menteeName, when },
+          payload: {
+            reason: "menteeSuggested",
+            menteeName: p.menteeName,
+            slotCount: slots.length,
+            roundNumber,
+          },
         },
       ]);
     }
   );
+}
+
+// ----------------------------------------------------------------------------
+// APPROVE_SUGGESTED_SLOT — mentor accepts one of the mentee's suggested times.
+// ----------------------------------------------------------------------------
+
+// PENDING_MENTOR + Mentor APPROVE_SUGGESTED_SLOT -> SCHEDULED (status MATCHED).
+// Goes through the SAME createMeetingFromCurrentRound path as SELECT_SLOT — one
+// authoritative Meeting-creation implementation — with two extra guards:
+//   - the current round must be MENTEE-authored (expectProposedByRole)
+//   - the mentor double-booking check runs here (checkMentorDoubleBooking),
+//     because the mentee's times never passed through proposeSlots' guard.
+// Concurrency: applyStatusChange's (status, retryCount) compare-and-set means
+// only one APPROVE_SUGGESTED_SLOT / PROPOSE_SLOTS / REJECT from this
+// WAITING_FOR_MENTOR_SLOTS can win; a second tab approving another time loses
+// with 409 and creates no Meeting.
+function approveSuggestedSlot(requestId, actingUserId, rawOfferedSlotId) {
+  const offeredSlotId = parseId(rawOfferedSlotId, "offeredSlotId");
+
+  let confirmationCtx = null;
+
+  const run = runAction(
+    requestId,
+    ACTION.APPROVE_SUGGESTED_SLOT,
+    actingUserId,
+    async (tx, request) => {
+      confirmationCtx = await createMeetingFromCurrentRound(
+        tx,
+        request,
+        offeredSlotId,
+        { expectProposedByRole: "MENTEE", checkMentorDoubleBooking: true }
+      );
+    }
+  );
+
+  return run.then((result) => {
+    dispatchConfirmationEmail(confirmationCtx);
+    return result;
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -988,6 +1284,8 @@ module.exports = {
   cannotAttend,
   proposeSlots,
   selectSlot,
+  suggestSlots,
+  approveSuggestedSlot,
   mentorCancel,
   reschedule,
   cannotAttendMeeting,

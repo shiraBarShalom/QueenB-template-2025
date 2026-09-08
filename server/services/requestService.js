@@ -187,7 +187,7 @@ async function getMentorDashboard(rawProfileId) {
   });
   if (!profile) throw new ApiError(`MentorProfile ${mentorProfileId} not found`, 404);
 
-  const [grouped, incomingRequests, awaitingRaw, scheduledRaw] = await Promise.all([
+  const [grouped, incomingRaw, awaitingRaw, scheduledRaw] = await Promise.all([
     prisma.mentoringRequest.groupBy({
       by: ["status"],
       where: { mentorProfileId },
@@ -201,6 +201,22 @@ async function getMentorDashboard(rawProfileId) {
         status: true,
         createdAt: true,
         mentee: { select: DASHBOARD_MENTEE_SELECT },
+        // When the mentee has counter-proposed her own times (SUGGEST_SLOTS),
+        // the latest round is MENTEE-authored and carries the times the mentor
+        // can approve directly. A plain mentor-owed request has this null.
+        schedulingRounds: {
+          orderBy: { roundNumber: "desc" },
+          take: 1,
+          select: {
+            roundNumber: true,
+            proposedByRole: true,
+            createdAt: true,
+            offeredSlots: {
+              orderBy: { startTime: "asc" },
+              select: { id: true, startTime: true, endTime: true },
+            },
+          },
+        },
       },
     }),
     prisma.mentoringRequest.findMany({
@@ -254,6 +270,22 @@ async function getMentorDashboard(rawProfileId) {
 
   const countFor = (status) =>
     grouped.find((g) => g.status === status)?._count._all ?? 0;
+
+  const incomingRequests = incomingRaw.map((r) => {
+    const round = r.schedulingRounds && r.schedulingRounds[0];
+    const menteeSuggested = round && round.proposedByRole === "MENTEE";
+    return {
+      id: r.id,
+      status: r.status,
+      createdAt: r.createdAt,
+      mentee: r.mentee,
+      // Present only for a mentee counter-proposal — the times the mentor may
+      // approve directly (APPROVE_SUGGESTED_SLOT) instead of proposing her own.
+      menteeSuggestion: menteeSuggested
+        ? { roundNumber: round.roundNumber, suggestedAt: round.createdAt, slots: round.offeredSlots }
+        : null,
+    };
+  });
 
   const awaitingSelectionRequests = awaitingRaw.map((r) => {
     const round = r.schedulingRounds[0] || null;
@@ -353,6 +385,7 @@ async function getMenteeScheduling(rawUserId) {
         select: {
           roundNumber: true,
           type: true,
+          proposedByRole: true,
           createdAt: true,
           offeredSlots: {
             orderBy: { startTime: "asc" },
@@ -392,6 +425,9 @@ async function getMenteeScheduling(rawUserId) {
         fullName: r.mentorProfile.user.fullName,
         jobTitle: r.mentorProfile.user.jobTitle,
         workplace: r.mentorProfile.user.workplace,
+        // Needed by the mentee's "suggest your own times" picker to derive each
+        // slot's endTime (start + the mentor's configured meeting length).
+        meetingDurationMinutes: r.mentorProfile.meetingDurationMinutes,
       },
       proposal:
         r.status === "WAITING_FOR_MENTEE_SELECTION" && round
@@ -399,6 +435,19 @@ async function getMenteeScheduling(rawUserId) {
               roundNumber: round.roundNumber,
               type: round.type,
               proposedAt: round.createdAt,
+              slots: round.offeredSlots,
+            }
+          : null,
+      // The mentee's own counter-proposal, still waiting on the mentor to
+      // approve it. Shown as a "your times were sent" banner; the mentee has no
+      // action on it (the old mentor-slot picker is gone).
+      suggestion:
+        r.status === "WAITING_FOR_MENTOR_SLOTS" &&
+        round &&
+        round.proposedByRole === "MENTEE"
+          ? {
+              roundNumber: round.roundNumber,
+              suggestedAt: round.createdAt,
               slots: round.offeredSlots,
             }
           : null,

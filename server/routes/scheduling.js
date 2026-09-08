@@ -13,6 +13,8 @@ const { handleError } = require("../utils/prismaError");
 //                             POST /api/requests/:id/reject
 //   this file owns:           POST /api/requests/:requestId/propose-slots
 //                             POST /api/requests/:requestId/select-slot
+//                             POST /api/requests/:requestId/suggest-slots
+//                             POST /api/requests/:requestId/approve-suggested-slot
 //                             POST /api/requests/:requestId/cannot-attend
 //                             POST /api/requests/:requestId/withdraw
 //                             POST /api/requests/:requestId/cancel
@@ -55,6 +57,44 @@ router.post("/:requestId/select-slot", async (req, res) => {
       req.body.offeredSlotId
     );
     return sendSuccess(res, request, "Slot selected");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
+// POST /api/requests/:requestId/suggest-slots
+// Body: { actingUserId, slots: [{ startTime, endTime }, ...] }  (1-3 slots)
+// Mentee counter-proposal: the mentor's proposed times did not fit, so instead
+// of CANNOT_ATTEND the mentee offers her own times.
+//   WAITING_FOR_MENTEE_SELECTION -> WAITING_FOR_MENTOR_SLOTS, retryCount += 1
+//   400 bad slot payload · 403 wrong actor · 409 wrong state / retry cap / CAS.
+router.post("/:requestId/suggest-slots", async (req, res) => {
+  try {
+    const request = await schedulingService.suggestSlots(
+      req.params.requestId,
+      req.body.actingUserId,
+      req.body.slots
+    );
+    return sendSuccess(res, request, "Times suggested");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
+// POST /api/requests/:requestId/approve-suggested-slot
+// Body: { actingUserId, offeredSlotId }
+// Mentor approves ONE of the mentee's suggested times.
+//   WAITING_FOR_MENTOR_SLOTS -> MATCHED (creates the Meeting, same path as
+//   select-slot). 403 wrong actor · 409 current round is not a mentee
+//   suggestion / slot not in it / past / mentor double-booked / CAS.
+router.post("/:requestId/approve-suggested-slot", async (req, res) => {
+  try {
+    const request = await schedulingService.approveSuggestedSlot(
+      req.params.requestId,
+      req.body.actingUserId,
+      req.body.offeredSlotId
+    );
+    return sendSuccess(res, request, "Suggested time approved");
   } catch (err) {
     return handleError(err, res);
   }

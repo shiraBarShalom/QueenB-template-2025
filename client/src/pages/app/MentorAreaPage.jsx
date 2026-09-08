@@ -15,9 +15,11 @@ import fillTemplate from "../../utils/fillTemplate";
 import {
   fetchMentorDashboard,
   rejectMentoringRequest,
+  approveSuggestedSlot,
   rescheduleMentoringRequest,
   cannotAttendMeetingRequest,
 } from "../../api/mentorScheduling";
+import { formatDateTimeLabel } from "../../utils/slotTime";
 import PageHeader from "../../components/app/PageHeader";
 import ContentCard from "../../components/app/ContentCard";
 import ListContainer from "../../components/app/ListContainer";
@@ -52,7 +54,7 @@ const PANEL_ID = "mentor-section-panel";
 const DEFAULT_TAB = "waitingForResponse";
 
 export default function MentorAreaPage() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const c = t.app.mentorArea;
   const { id: actingUserId, mentorProfileId } = useCurrentUser();
   const location = useLocation();
@@ -65,6 +67,8 @@ export default function MentorAreaPage() {
 
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejecting, setRejecting] = useState(false);
+  const [approveTarget, setApproveTarget] = useState(null); // { request, slot }
+  const [approving, setApproving] = useState(false);
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [rescheduling, setRescheduling] = useState(false);
   const [cannotAttendTarget, setCannotAttendTarget] = useState(null);
@@ -148,6 +152,52 @@ export default function MentorAreaPage() {
       }
     } finally {
       setRejecting(false);
+    }
+  };
+
+  const openApprove = (request, slot) => setApproveTarget({ request, slot });
+  const closeApprove = () => {
+    if (!approving) setApproveTarget(null);
+  };
+
+  // Mentor approves one of the mentee's suggested times → same completion as the
+  // mentee's select-slot: one Meeting, request MATCHED. The backend is
+  // authoritative; a 409 means another tab / the mentee moved it on first.
+  const confirmApprove = async () => {
+    if (approving || !approveTarget) return; // guard against a double submit
+    const { request: targetRequest, slot } = approveTarget;
+    setApproving(true);
+    try {
+      await approveSuggestedSlot(targetRequest.id, actingUserId, slot.id);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              counts: {
+                ...prev.counts,
+                waitingForResponse: Math.max(0, prev.counts.waitingForResponse - 1),
+                scheduledMeetings: prev.counts.scheduledMeetings + 1,
+              },
+              incomingRequests: prev.incomingRequests.filter(
+                (r) => r.id !== targetRequest.id
+              ),
+            }
+          : prev
+      );
+      setApproveTarget(null);
+      setToast({ severity: "success", message: c.approveSuggested.success });
+      setActiveTab("scheduledMeetings");
+      load({ silent: true });
+    } catch (err) {
+      if (err.status === 409) {
+        setApproveTarget(null);
+        setToast({ severity: "warning", message: c.approveSuggested.conflict });
+        load({ silent: true });
+      } else {
+        setToast({ severity: "error", message: c.approveSuggested.error });
+      }
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -254,8 +304,12 @@ export default function MentorAreaPage() {
         <IncomingRequestCard
           key={r.id}
           request={r}
-          busy={rejecting && rejectTarget?.id === r.id}
+          busy={
+            (rejecting && rejectTarget?.id === r.id) ||
+            (approving && approveTarget?.request?.id === r.id)
+          }
           onReject={openReject}
+          onApprove={openApprove}
         />
       ),
     },
@@ -365,6 +419,23 @@ export default function MentorAreaPage() {
         pending={rejecting}
         onCancel={closeReject}
         onConfirm={confirmReject}
+      />
+
+      <ConfirmDialog
+        open={Boolean(approveTarget)}
+        title={c.approveSuggested.title}
+        body={fillTemplate(c.approveSuggested.body, {
+          menteeName: approveTarget?.request?.mentee?.fullName || "",
+          slot: approveTarget?.slot
+            ? formatDateTimeLabel(approveTarget.slot.startTime, lang)
+            : "",
+        })}
+        confirmLabel={approving ? c.approveSuggested.pending : c.approveSuggested.confirm}
+        cancelLabel={c.approveSuggested.cancel}
+        confirmColor="primary"
+        pending={approving}
+        onCancel={closeApprove}
+        onConfirm={confirmApprove}
       />
 
       <ConfirmDialog

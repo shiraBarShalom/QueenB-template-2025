@@ -3,6 +3,7 @@ import { Box, Button, Stack, Typography } from "@mui/material";
 import EventBusyRoundedIcon from "@mui/icons-material/EventBusyRounded";
 
 import { useLanguage } from "../../../i18n/LanguageProvider";
+import { formatDayLabel, formatTimeRange } from "../../../utils/slotTime";
 import StatusChip from "../StatusChip";
 import MentorHeader from "./MentorHeader";
 
@@ -31,15 +32,24 @@ const CHIP_KEY = {
 };
 
 export default function MenteeRequestStatusCard({ request, disabled = false, onWithdraw }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const s = t.app.personalArea.scheduling.statuses;
   const proposedCopy = t.app.personalArea.scheduling.proposed;
 
+  const menteeSuggested =
+    request.status === "WAITING_FOR_MENTOR_SLOTS" && Boolean(request.suggestion);
   const afterReschedule =
-    request.status === "WAITING_FOR_MENTOR_SLOTS" && Boolean(request.previousMeeting);
-  const sentenceKey = afterReschedule
+    request.status === "WAITING_FOR_MENTOR_SLOTS" &&
+    !menteeSuggested &&
+    Boolean(request.previousMeeting);
+  const sentenceKey = menteeSuggested
+    ? "WAITING_FOR_MENTOR_SLOTS_MENTEE_SUGGESTED"
+    : afterReschedule
     ? "WAITING_FOR_MENTOR_SLOTS_AFTER_RESCHEDULE"
     : request.status;
+
+  const suggestedSlots =
+    (menteeSuggested && request.suggestion && request.suggestion.slots) || [];
 
   const sentence = s[sentenceKey] || s[request.status] || request.status;
   const chipLabel = (s.chip && s.chip[request.status]) || undefined;
@@ -62,6 +72,29 @@ export default function MenteeRequestStatusCard({ request, disabled = false, onW
       <Typography sx={{ mt: 1.5, fontSize: "0.95rem", color: "#4a1528", lineHeight: 1.6 }}>
         {sentence}
       </Typography>
+
+      {suggestedSlots.length > 0 && (
+        <Box sx={{ mt: 1 }}>
+          <Typography
+            component="h4"
+            sx={{ fontSize: "0.8rem", fontWeight: 700, color: "#4a1528", mb: 0.75 }}
+          >
+            {s.suggestedTimesTitle}
+          </Typography>
+          <Stack component="ul" role="list" spacing={0.5} sx={{ listStyle: "none", p: 0, m: 0 }}>
+            {suggestedSlots.map((slot) => (
+              <Typography
+                key={slot.id}
+                component="li"
+                sx={{ fontSize: "0.85rem", color: "#4a1528" }}
+              >
+                {formatDayLabel(slot.startTime, lang)} ·{" "}
+                {formatTimeRange(slot.startTime, slot.endTime, lang)}
+              </Typography>
+            ))}
+          </Stack>
+        </Box>
+      )}
 
       {onWithdraw && request.status === "WAITING_FOR_MENTOR_SLOTS" && (
         <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.5 }}>

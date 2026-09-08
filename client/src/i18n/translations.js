@@ -326,6 +326,19 @@ export const translations = {
             cannotAttendCta: "אף מועד לא מתאים",
             withdrawCta: "בטלי בקשה",
           },
+          suggest: {
+            title: "הציעי מועדים משלך",
+            intro:
+              "אף אחד מהמועדים לא מתאים? הציעי עד 3 מועדים שכן מתאימים לך, והמנטורית תוכל לאשר אחד מהם ישירות.",
+            durationNote: "משך כל פגישה: {minutes} דקות.",
+            selectedTitle: "המועדים שתציעי",
+            minHint: "בחרי לפחות מועד אחד כדי לשלוח.",
+            submit: "שליחת המועדים למנטורית",
+            submitting: "שולחת…",
+            cancel: "חזרה",
+            fallbackHint: "או שנבקש מהמנטורית להציע סבב מועדים חדש",
+            fallbackCta: "שהמנטורית תציע מועדים",
+          },
           matched: {
             chipFallback: "נקבעה",
             whenLabel: "מועד הפגישה",
@@ -338,10 +351,13 @@ export const translations = {
             WAITING_FOR_MENTOR_SLOTS: "הבקשה נשלחה. מחכים שהמנטורית תציע מועדים.",
             WAITING_FOR_MENTOR_SLOTS_AFTER_RESCHEDULE:
               "הפגישה בוטלה לבקשת אחת הצדדים. מחכים שהמנטורית תציע מועדים חדשים.",
+            WAITING_FOR_MENTOR_SLOTS_MENTEE_SUGGESTED:
+              "הצעת למנטורית מועדים שמתאימים לך. ממתינים שהיא תאשר אחד מהם.",
             WAITING_FOR_MENTEE_SELECTION: "המנטורית הציעה לך מועדים חדשים.",
             MATCHED: "נקבעה פגישה 🎉",
             REJECTED: "המנטורית אינה זמינה לפגישה כרגע.",
             CANCELLED: "הבקשה בוטלה.",
+            suggestedTimesTitle: "המועדים שהצעת",
             chip: {
               WAITING_FOR_MENTOR_SLOTS: "ממתין למנטורית",
               WAITING_FOR_MENTEE_SELECTION: "לבחירתך",
@@ -396,6 +412,7 @@ export const translations = {
           toast: {
             selectSuccess: "הפגישה נקבעה.",
             retrySuccess: "ביקשנו מהמנטורית להציע מועדים חדשים.",
+            suggestSuccess: "המועדים שהצעת נשלחו למנטורית.",
             closedSuccess: "הבקשה נסגרה.",
             withdrawSuccess: "הבקשה בוטלה.",
             conflict: "הבקשה השתנתה מאז שפתחת את המסך. רעננו עבורך את הפרטים.",
@@ -425,7 +442,12 @@ export const translations = {
           yearsExperience: "{count} שנות ניסיון",
           rejectCta: "דחייה",
           proposeCta: "הציעי זמנים",
+          proposeOwnCta: "הצעת מועדים משלך",
           avatarAlt: "תמונת הפרופיל של {name}",
+          menteeSuggestedTitle: "{name} הציעה זמנים שמתאימים לה",
+          menteeSuggestedHint:
+            "אפשר לאשר אחד מהמועדים האלה ישירות, או להציע מועדים משלך.",
+          approveCta: "אשרי את הזמן",
         },
         reject: {
           title: "האם את בטוחה שברצונך לדחות את הבקשה של {menteeName}?",
@@ -436,6 +458,16 @@ export const translations = {
           pending: "דוחה…",
           success: "הבקשה נדחתה.",
           error: "הדחייה נכשלה. אפשר לנסות שוב.",
+          conflict: "מצב הבקשה השתנה בינתיים. רעננו עבורך את הרשימה.",
+        },
+        approveSuggested: {
+          title: "לאשר את המועד?",
+          body: "הפגישה עם {menteeName} תיקבע ל{slot}. לאחר האישור לא ניתן לבחור מועד אחר.",
+          cancel: "חזרה",
+          confirm: "כן, קבעי את הפגישה",
+          pending: "מאשרת…",
+          success: "הפגישה נקבעה.",
+          error: "האישור נכשל. אפשר לנסות שוב.",
           conflict: "מצב הבקשה השתנה בינתיים. רעננו עבורך את הרשימה.",
         },
         proposeSlots: {
@@ -598,6 +630,7 @@ export const translations = {
           POST_MEETING_CHECK: "הפגישה הסתיימה — נשמח לשמוע איך היה 💗",
           FEEDBACK_REMINDER: "תזכורת: המשוב שלך על הפגישה עדיין מחכה 💗",
           RESCHEDULE_REQUIRED_MORE_SLOTS: "{menteeName} ביקשה מועדים חדשים לפגישה.",
+          RESCHEDULE_REQUIRED_MENTEE_SUGGESTED: "{menteeName} הציעה מועדים שמתאימים לה — אפשר לאשר אחד מהם.",
           RESCHEDULE_REQUIRED_CANNOT_ATTEND: "הצד השני אינו יכול להגיע לפגישה שנקבעה — צריך לתאם מועד חדש.",
           REQUEST_CANCELLED_CANNOT_ATTEND_MEETING_BY_MENTOR: "המנטורית לא תוכל להגיע לפגישה. הבקשה נסגרה.",
           REQUEST_CANCELLED_CANNOT_ATTEND_MEETING_BY_MENTEE: "המנטית לא תוכל להגיע לפגישה. הבקשה נסגרה.",
@@ -1019,6 +1052,19 @@ export const translations = {
             cannotAttendCta: "لا يناسبني أي موعد",
             withdrawCta: "إلغاء الطلب",
           },
+          suggest: {
+            title: "اقترحي مواعيدك الخاصة",
+            intro:
+              "لا يناسبك أي موعد؟ اقترحي حتى 3 مواعيد تناسبك، وتستطيع المرشدة اعتماد أحدها مباشرةً.",
+            durationNote: "مدة كل لقاء: {minutes} دقيقة.",
+            selectedTitle: "المواعيد التي ستقترحينها",
+            minHint: "اختاري موعدًا واحدًا على الأقل للإرسال.",
+            submit: "إرسال المواعيد إلى المرشدة",
+            submitting: "جارٍ الإرسال…",
+            cancel: "رجوع",
+            fallbackHint: "أو نطلب من المرشدة اقتراح جولة مواعيد جديدة",
+            fallbackCta: "لتقترح المرشدة مواعيد",
+          },
           matched: {
             chipFallback: "مُحدَّد",
             whenLabel: "موعد اللقاء",
@@ -1031,10 +1077,13 @@ export const translations = {
             WAITING_FOR_MENTOR_SLOTS: "أُرسل الطلب. بانتظار أن تقترح المرشدة مواعيد.",
             WAITING_FOR_MENTOR_SLOTS_AFTER_RESCHEDULE:
               "أُلغي اللقاء بطلب أحد الطرفين. بانتظار أن تقترح المرشدة مواعيد جديدة.",
+            WAITING_FOR_MENTOR_SLOTS_MENTEE_SUGGESTED:
+              "اقترحتِ على المرشدة مواعيد تناسبك. بانتظار أن تعتمد أحدها.",
             WAITING_FOR_MENTEE_SELECTION: "اقترحت المرشدة عليك مواعيد جديدة.",
             MATCHED: "تم تحديد لقاء 🎉",
             REJECTED: "المرشدة غير متاحة للقاء حاليًا.",
             CANCELLED: "أُلغي الطلب.",
+            suggestedTimesTitle: "المواعيد التي اقترحتِها",
             chip: {
               WAITING_FOR_MENTOR_SLOTS: "بانتظار المرشدة",
               WAITING_FOR_MENTEE_SELECTION: "باختيارك",
@@ -1089,6 +1138,7 @@ export const translations = {
           toast: {
             selectSuccess: "تم تحديد اللقاء.",
             retrySuccess: "طلبنا من المرشدة اقتراح مواعيد جديدة.",
+            suggestSuccess: "أُرسلت المواعيد التي اقترحتِها إلى المرشدة.",
             closedSuccess: "تم إغلاق الطلب.",
             withdrawSuccess: "تم إلغاء الطلب.",
             conflict: "تغيّر الطلب منذ أن فتحتِ الشاشة. حدّثنا التفاصيل من أجلك.",
@@ -1118,7 +1168,12 @@ export const translations = {
           yearsExperience: "{count} سنوات خبرة",
           rejectCta: "رفض",
           proposeCta: "اقتراح مواعيد",
+          proposeOwnCta: "اقتراح مواعيدك",
           avatarAlt: "صورة الملف الشخصي لـ {name}",
+          menteeSuggestedTitle: "اقترحت {name} مواعيد تناسبها",
+          menteeSuggestedHint:
+            "يمكنك اعتماد أحد هذه المواعيد مباشرةً، أو اقتراح مواعيدك الخاصة.",
+          approveCta: "اعتمدي الموعد",
         },
         reject: {
           title: "هل أنتِ متأكدة أنكِ تريدين رفض طلب {menteeName}؟",
@@ -1129,6 +1184,16 @@ export const translations = {
           pending: "جارٍ الرفض…",
           success: "تم رفض الطلب.",
           error: "فشل الرفض. يمكنك المحاولة مرة أخرى.",
+          conflict: "تغيّرت حالة الطلب في هذه الأثناء. حدّثنا القائمة من أجلك.",
+        },
+        approveSuggested: {
+          title: "اعتماد الموعد؟",
+          body: "سيُحدَّد اللقاء مع {menteeName} في {slot}. بعد الاعتماد لا يمكن اختيار موعد آخر.",
+          cancel: "رجوع",
+          confirm: "نعم، حدّدي اللقاء",
+          pending: "جارٍ الاعتماد…",
+          success: "تم تحديد اللقاء.",
+          error: "فشل الاعتماد. يمكنك المحاولة مرة أخرى.",
           conflict: "تغيّرت حالة الطلب في هذه الأثناء. حدّثنا القائمة من أجلك.",
         },
         proposeSlots: {
@@ -1290,6 +1355,7 @@ export const translations = {
           POST_MEETING_CHECK: "انتهى اللقاء — يسعدنا أن نسمع كيف كان 💗",
           FEEDBACK_REMINDER: "تذكير: ملاحظاتك عن اللقاء ما زالت بانتظارك 💗",
           RESCHEDULE_REQUIRED_MORE_SLOTS: "طلبت {menteeName} مواعيد جديدة للقاء.",
+          RESCHEDULE_REQUIRED_MENTEE_SUGGESTED: "اقترحت {menteeName} مواعيد تناسبها — يمكنك اعتماد أحدها.",
           RESCHEDULE_REQUIRED_CANNOT_ATTEND: "الطرف الآخر لا يستطيع حضور اللقاء المحدد — يلزم تحديد موعد جديد.",
           REQUEST_CANCELLED_CANNOT_ATTEND_MEETING_BY_MENTOR: "المرشدة لن تتمكّن من حضور اللقاء. أُغلق الطلب.",
           REQUEST_CANCELLED_CANNOT_ATTEND_MEETING_BY_MENTEE: "المتدرّبة لن تتمكّن من حضور اللقاء. أُغلق الطلب.",
@@ -1712,6 +1778,19 @@ export const translations = {
             cannotAttendCta: "None of these work",
             withdrawCta: "Cancel request",
           },
+          suggest: {
+            title: "Suggest your own times",
+            intro:
+              "None of these work? Suggest up to 3 times that do work for you, and the mentor can approve one of them directly.",
+            durationNote: "Each meeting is {minutes} minutes.",
+            selectedTitle: "Times you'll suggest",
+            minHint: "Pick at least one time to send.",
+            submit: "Send times to the mentor",
+            submitting: "Sending…",
+            cancel: "Back",
+            fallbackHint: "Or ask the mentor to propose a fresh set of times",
+            fallbackCta: "Let the mentor propose times",
+          },
           matched: {
             chipFallback: "Scheduled",
             whenLabel: "Meeting time",
@@ -1724,10 +1803,13 @@ export const translations = {
             WAITING_FOR_MENTOR_SLOTS: "Request sent. Waiting for the mentor to propose times.",
             WAITING_FOR_MENTOR_SLOTS_AFTER_RESCHEDULE:
               "The meeting was cancelled at one side's request. Waiting for the mentor to propose new times.",
+            WAITING_FOR_MENTOR_SLOTS_MENTEE_SUGGESTED:
+              "You suggested times that work for you. Waiting for the mentor to approve one of them.",
             WAITING_FOR_MENTEE_SELECTION: "The mentor proposed new times for you.",
             MATCHED: "A meeting is scheduled 🎉",
             REJECTED: "The mentor isn't available for a meeting right now.",
             CANCELLED: "The request was cancelled.",
+            suggestedTimesTitle: "The times you suggested",
             chip: {
               WAITING_FOR_MENTOR_SLOTS: "Waiting for mentor",
               WAITING_FOR_MENTEE_SELECTION: "Your choice",
@@ -1782,6 +1864,7 @@ export const translations = {
           toast: {
             selectSuccess: "The meeting is scheduled.",
             retrySuccess: "We asked the mentor for new times.",
+            suggestSuccess: "Your suggested times were sent to the mentor.",
             closedSuccess: "The request was closed.",
             withdrawSuccess: "The request was cancelled.",
             conflict: "This request changed since you opened it. We've refreshed the details.",
@@ -1811,7 +1894,12 @@ export const translations = {
           yearsExperience: "{count} years of experience",
           rejectCta: "Decline",
           proposeCta: "Propose times",
+          proposeOwnCta: "Propose your own times",
           avatarAlt: "{name}'s profile picture",
+          menteeSuggestedTitle: "{name} suggested times that work for her",
+          menteeSuggestedHint:
+            "You can approve one of these times directly, or propose your own.",
+          approveCta: "Approve this time",
         },
         reject: {
           title: "Are you sure you want to decline {menteeName}'s request?",
@@ -1822,6 +1910,16 @@ export const translations = {
           pending: "Declining…",
           success: "The request was declined.",
           error: "Declining failed. You can try again.",
+          conflict: "The request changed in the meantime. We've refreshed the list for you.",
+        },
+        approveSuggested: {
+          title: "Approve this time?",
+          body: "The meeting with {menteeName} will be scheduled for {slot}. After you approve, no other time can be picked.",
+          cancel: "Back",
+          confirm: "Yes, schedule it",
+          pending: "Approving…",
+          success: "The meeting is scheduled.",
+          error: "Approving failed. You can try again.",
           conflict: "The request changed in the meantime. We've refreshed the list for you.",
         },
         proposeSlots: {
@@ -1984,6 +2082,7 @@ export const translations = {
           POST_MEETING_CHECK: "Your meeting has ended — we'd love to hear how it went 💗",
           FEEDBACK_REMINDER: "Reminder: your feedback on the meeting is still waiting 💗",
           RESCHEDULE_REQUIRED_MORE_SLOTS: "{menteeName} asked for new meeting times.",
+          RESCHEDULE_REQUIRED_MENTEE_SUGGESTED: "{menteeName} suggested times that work for her — you can approve one.",
           RESCHEDULE_REQUIRED_CANNOT_ATTEND: "The other participant can't attend the scheduled meeting — new times are needed.",
           REQUEST_CANCELLED_CANNOT_ATTEND_MEETING_BY_MENTOR: "The mentor can't attend the meeting. The request was closed.",
           REQUEST_CANCELLED_CANNOT_ATTEND_MEETING_BY_MENTEE: "The mentee can't attend the meeting. The request was closed.",

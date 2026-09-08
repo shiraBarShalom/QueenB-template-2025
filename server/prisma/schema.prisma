@@ -324,6 +324,17 @@ model SchedulingRound {
   roundNumber Int
   type        SchedulingRoundType
 
+  // Who authored the times in this round. NULL for every historical row and for
+  // every round the mentor proposes (the default); MENTEE only when the round is
+  // a mentee counter-proposal submitted via schedulingService.suggestSlots (the
+  // mentor proposed times, none fit, and the mentee offered her own instead of
+  // asking for another mentor round). Reuses the existing ParticipantRole enum —
+  // no new enum, no new MentoringRequestStatus. It is the only thing that
+  // distinguishes a "mentor owes a round" WAITING_FOR_MENTOR_SLOTS from a
+  // "mentor should approve the mentee's suggestion" one; APPROVE_SUGGESTED_SLOT
+  // is gated on it.
+  proposedByRole ParticipantRole?
+
   createdAt DateTime @default(now())
 
   offeredSlots OfferedSlot[]

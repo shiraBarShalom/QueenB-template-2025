@@ -74,6 +74,27 @@ export async function cannotAttend(requestId, actingUserId) {
 }
 
 /**
+ * POST /api/requests/:requestId/suggest-slots
+ * Body: { actingUserId, slots: [{ startTime, endTime }, ...] }  (1-3, ISO)
+ * schedulingService.suggestSlots — mentee counter-proposal: the mentor's
+ * proposed times didn't fit, so the mentee offers her own instead of asking for
+ * another mentor round.
+ *   WAITING_FOR_MENTEE_SELECTION -> WAITING_FOR_MENTOR_SLOTS, retryCount += 1
+ *   400 bad slot payload · 403 wrong actor · 409 wrong state / retry cap / CAS.
+ */
+export async function suggestSlots(requestId, actingUserId, slots) {
+  try {
+    const res = await http.post(`/requests/${requestId}/suggest-slots`, {
+      actingUserId,
+      slots,
+    });
+    return res.data.data;
+  } catch (err) {
+    throw toClientError(err);
+  }
+}
+
+/**
  * POST /api/requests/:requestId/withdraw   Body: { actingUserId }
  * schedulingService.withdraw: WAITING_FOR_MENTOR_SLOTS | WAITING_FOR_MENTEE_SELECTION
  *   -> CANCELLED (terminal). 403 wrong actor · 409 wrong state / CAS.

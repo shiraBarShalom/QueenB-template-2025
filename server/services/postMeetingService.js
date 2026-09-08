@@ -39,6 +39,10 @@ const { createNotifications } = require("./notificationService");
 // MentoringRequest for the same (mentee, mentorProfile) pair, started at the
 // normal initial status. The Part 1 state machine is not touched.
 const requestService = require("./requestService");
+// Outbound email is a NOTIFICATION SIDE EFFECT only — dispatched AFTER the
+// feedback transaction commits, fire-and-forget. It can never change feedback /
+// meeting / request state or fail a submission. See submitFeedback().
+const emailService = require("./emailService");
 
 // ----------------------------------------------------------------------------
 // Vocabulary — mirrors the Prisma enums (schema.prisma). Kept here so the route
@@ -369,8 +373,9 @@ async function submitFeedback(rawMeetingId, rawActingUserId, body = {}) {
   const { occurred, feedback } = normalizeSubmission(body, role);
   const p = participantsOf(meeting);
 
+  let result;
   try {
-    return await prisma.$transaction(async (tx) => {
+    result = await prisma.$transaction(async (tx) => {
       // 1. lifecycle input — one row per participant, unique on (meeting, user).
       await tx.meetingOutcomeConfirmation.create({
         data: {
@@ -442,6 +447,39 @@ async function submitFeedback(rawMeetingId, rawActingUserId, body = {}) {
     }
     throw err;
   }
+
+  // Post-commit ONLY. The mentee's Feedback + MeetingOutcomeConfirmation rows
+  // are persisted and `result` is final. Fire the mentor thank-you email:
+  //   * only on the MENTEE's submission, and only when SHE reported the meeting
+  //     OCCURRED (occurred === true);
+  //   * exactly once — a second submission by the same mentee hits the Feedback
+  //     @@unique([meetingId, authorId]) guard above (P2002 -> 409) and never
+  //     reaches this line, and there is no feedback-edit/re-submit endpoint, so
+  //     no persisted "sent" flag is needed;
+  //   * fire-and-forget — it cannot change feedback status, meeting status,
+  //     request status, wantsAnotherMeeting, or whether this call succeeds.
+  if (role === PARTICIPANT_ROLE.MENTEE && occurred === true) {
+    dispatchMentorThankYou(meeting, p).catch((err) =>
+      // eslint-disable-next-line no-console
+      console.error("[email] mentor thank-you dispatch failed:", err && err.message)
+    );
+  }
+
+  return result;
+}
+
+// Load the mentor's real email (MEETING_INCLUDE carries only fullName) and hand
+// off to emailService. Isolated, read-only, post-commit; emailService swallows
+// and logs every delivery failure.
+async function dispatchMentorThankYou(meeting, p) {
+  const mentorUser = await prisma.user.findUnique({
+    where: { id: p.mentorUserId },
+    select: { email: true, fullName: true },
+  });
+  if (!mentorUser || !mentorUser.email) return;
+  await emailService.sendMentorThankYouEmail({
+    mentor: { email: mentorUser.email, name: mentorUser.fullName || p.mentorName },
+  });
 }
 
 // ----------------------------------------------------------------------------
