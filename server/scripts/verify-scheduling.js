@@ -47,11 +47,24 @@ async function expectStatus(name, fnOrPromise, status) {
 }
 
 const HOUR = 3600 * 1000;
-const futureSlots = (n, base = Date.now() + 24 * HOUR) =>
-  Array.from({ length: n }, (_, i) => ({
-    startTime: new Date(base + i * HOUR).toISOString(),
-    endTime: new Date(base + i * HOUR + 30 * 60 * 1000).toISOString(),
+const DAY = 24 * HOUR;
+
+// Every default (no explicit `base`) call gets its OWN future day window, so
+// meetings created by one section never overlap slots proposed by another. This
+// matters now that proposeSlots enforces mentor double-booking — sections that
+// leave a live SCHEDULED meeting (e.g. [1], [5]) must not collide with a later
+// section's proposal. Passing an explicit `base` opts out (used by the tests
+// that deliberately construct specific / past / overlapping windows).
+let __slotWindow = 0;
+const futureSlots = (n, base) => {
+  // Default windows start well past the explicit +48h / +72h bases used by a few
+  // tests, so a staggered window never coincides with those.
+  const b = base === undefined ? Date.now() + (10 + ++__slotWindow) * DAY : base;
+  return Array.from({ length: n }, (_, i) => ({
+    startTime: new Date(b + i * HOUR).toISOString(),
+    endTime: new Date(b + i * HOUR + 30 * 60 * 1000).toISOString(),
   }));
+};
 
 async function cleanup() {
   const users = await prisma.user.findMany({
@@ -489,6 +502,114 @@ async function main() {
       where: { requestId: id, status: "CANCELLED" },
     });
     assert("exactly one meeting ended up CANCELLED", cancelledMeetings === 1);
+  }
+
+  // === 19. Mentor double-booking protection ==========================
+  console.log("\n[19] Mentor double-booking protection");
+  {
+    // A far-future base clear of every staggered window used above.
+    const B = Date.now() + 200 * DAY;
+
+    // propose a list of [startMs, endMs) intervals for `reqId`.
+    const propose = (reqId, mentorUserId, ranges) =>
+      sched.proposeSlots(
+        reqId,
+        mentorUserId,
+        ranges.map(([s, e]) => ({
+          startTime: new Date(s).toISOString(),
+          endTime: new Date(e).toISOString(),
+        }))
+      );
+
+    // Book a SCHEDULED meeting for `mentorProfileId` at exactly [startMs, endMs).
+    // Drives the real propose -> select path (2 slots: target + a far decoy).
+    const bookMeeting = async (menteeId, mentorUserId, mentorProfileId, startMs, endMs) => {
+      const r = await prisma.mentoringRequest.create({
+        data: { menteeId, mentorProfileId, status: "WAITING_FOR_MENTOR_SLOTS" },
+      });
+      const decoy = startMs + 90 * DAY;
+      await propose(r.id, mentorUserId, [
+        [startMs, endMs],
+        [decoy, decoy + 30 * 60 * 1000],
+      ]);
+      const round = await prisma.schedulingRound.findFirst({
+        where: { requestId: r.id }, orderBy: { roundNumber: "desc" }, include: { offeredSlots: true },
+      });
+      const target = round.offeredSlots.find((s) => s.startTime.getTime() === startMs);
+      await sched.selectSlot(r.id, menteeId, target.id);
+      return r.id;
+    };
+
+    // MENTOR now has a SCHEDULED meeting 10:00–11:00  ==  [B, B + 1h)
+    await bookMeeting(MENTEE, MENTOR, mentorProfile.id, B, B + HOUR);
+
+    // 1. exact same interval -> rejected, request + rounds untouched
+    {
+      const r = await newRequest();
+      await expectStatus("exact-overlap slot -> 409",
+        () => propose(r.id, MENTOR, [[B, B + HOUR], [B + 10 * DAY, B + 10 * DAY + HOUR]]), 409);
+      assert("conflict leaves request WAITING_FOR_MENTOR_SLOTS", (await statusOf(r.id)) === "WAITING_FOR_MENTOR_SLOTS");
+      assert("conflict creates no SchedulingRound (tx rollback)",
+        (await prisma.schedulingRound.count({ where: { requestId: r.id } })) === 0);
+    }
+    // 2. partial overlap (10:15–10:45 inside 10:00–11:00) -> rejected
+    {
+      const r = await newRequest();
+      await expectStatus("partial-overlap slot -> 409",
+        () => propose(r.id, MENTOR, [[B + 15 * 60000, B + 45 * 60000], [B + 10 * DAY, B + 10 * DAY + HOUR]]), 409);
+    }
+    // 3. enclosing overlap (09:30–11:30 around 10:00–11:00) -> rejected
+    {
+      const r = await newRequest();
+      await expectStatus("enclosing-overlap slot -> 409",
+        () => propose(r.id, MENTOR, [[B - 30 * 60000, B + 90 * 60000], [B + 10 * DAY, B + 10 * DAY + HOUR]]), 409);
+    }
+    // 4 + 5. boundary-touching slots (09:00–10:00 and 11:00–12:00) -> allowed
+    {
+      const r = await newRequest();
+      await propose(r.id, MENTOR, [[B - HOUR, B], [B + HOUR, B + 2 * HOUR]]);
+      assert("back-to-back (boundary-touching) slots accepted -> PENDING_MENTEE",
+        (await statusOf(r.id)) === "WAITING_FOR_MENTEE_SELECTION");
+      const round = await prisma.schedulingRound.findFirst({
+        where: { requestId: r.id }, orderBy: { roundNumber: "desc" }, include: { offeredSlots: true },
+      });
+      assert("both boundary slots stored", round.offeredSlots.length === 2);
+    }
+    // 6. a CANCELLED meeting does not block its interval
+    {
+      const cReq = await bookMeeting(MENTEE, MENTOR, mentorProfile.id, B + 20 * DAY, B + 20 * DAY + HOUR);
+      await sched.mentorCancel(cReq, MENTOR); // request CANCELLED + meeting CANCELLED
+      const r = await newRequest();
+      await propose(r.id, MENTOR, [[B + 20 * DAY, B + 20 * DAY + HOUR], [B + 21 * DAY, B + 21 * DAY + HOUR]]);
+      assert("slot over a CANCELLED meeting is accepted",
+        (await statusOf(r.id)) === "WAITING_FOR_MENTEE_SELECTION");
+    }
+    // 7. another mentor's meeting does not block this mentor
+    {
+      await bookMeeting(MENTEE2, MENTOR2, mentor2Profile.id, B + 30 * DAY, B + 30 * DAY + HOUR);
+      const r = await newRequest(); // MENTEE + mentorProfile (mentor 1)
+      await propose(r.id, MENTOR, [[B + 30 * DAY, B + 30 * DAY + HOUR], [B + 31 * DAY, B + 31 * DAY + HOUR]]);
+      assert("a different mentor's booking does not block this mentor",
+        (await statusOf(r.id)) === "WAITING_FOR_MENTEE_SELECTION");
+    }
+    // 8. read model: exposes the live SCHEDULED interval, never the CANCELLED one, future-only
+    {
+      const busy = await sched.getMentorBusyIntervals(mentorProfile.id);
+      assert("busy intervals include the live SCHEDULED meeting",
+        busy.some((b) => b.start.getTime() === B && b.end.getTime() === B + HOUR));
+      assert("busy intervals exclude the CANCELLED meeting",
+        !busy.some((b) => b.start.getTime() === B + 20 * DAY));
+      assert("busy intervals are future-only", busy.every((b) => b.end.getTime() > Date.now()));
+    }
+    // 9. stale tab: a slot that was free at page-load is still rejected once booked
+    {
+      const staleReq = await newRequest(); // "tab loaded here — 10:00 @ B2 was free"
+      const B2 = B + 40 * DAY;
+      await bookMeeting(MENTEE, MENTOR, mentorProfile.id, B2, B2 + HOUR); // booked meanwhile
+      await expectStatus("stale-tab submit of a now-booked slot -> 409 (re-checked at accept time)",
+        () => propose(staleReq.id, MENTOR, [[B2, B2 + HOUR], [B2 + DAY, B2 + DAY + HOUR]]), 409);
+      assert("stale-tab conflict rolled back — no round", (await prisma.schedulingRound.count({ where: { requestId: staleReq.id } })) === 0);
+    }
   }
 
   console.log(`\n${"=".repeat(50)}\n  PASSED: ${passed}    FAILED: ${failed}\n${"=".repeat(50)}`);

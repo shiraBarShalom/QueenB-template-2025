@@ -4,6 +4,7 @@ const router = express.Router();
 const prisma = require("../prismaClient");
 const mentorService = require("../services/mentorService");
 const requestService = require("../services/requestService");
+const schedulingService = require("../services/schedulingService");
 const { sendSuccess, sendError } = require("../utils/responseHandler");
 const { ApiError, handleError } = require("../utils/prismaError");
 const { parseId } = require("../services/userService");
@@ -186,6 +187,22 @@ router.get("/:mentorProfileId/dashboard", async (req, res) => {
       req.params.mentorProfileId
     );
     return sendSuccess(res, dashboard, "Mentor dashboard fetched");
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
+// GET /api/mentors/:mentorProfileId/busy-intervals — the mentor's upcoming
+// occupied time intervals (blocking meetings only: SCHEDULED /
+// ATTENDANCE_CONFIRMED, future). The propose-slots picker uses this to grey out
+// taken times. Read-only; the authoritative double-booking rejection lives in
+// schedulingService.proposeSlots. Declared before "/:id".
+router.get("/:mentorProfileId/busy-intervals", async (req, res) => {
+  try {
+    const intervals = await schedulingService.getMentorBusyIntervals(
+      req.params.mentorProfileId
+    );
+    return sendSuccess(res, intervals, "Mentor busy intervals fetched");
   } catch (err) {
     return handleError(err, res);
   }

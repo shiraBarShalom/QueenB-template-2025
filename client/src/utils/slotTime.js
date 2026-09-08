@@ -49,6 +49,16 @@ export function isPastStart(ms) {
   return ms <= Date.now();
 }
 
+/**
+ * Half-open interval overlap in epoch ms: [aStart, aEnd) vs [bStart, bEnd).
+ * Touching exactly at a boundary (aEnd === bStart) is NOT an overlap — a meeting
+ * that ends when another begins is fine. Mirrors schedulingService.intervalsOverlap
+ * on the server (which stays authoritative).
+ */
+export function intervalsOverlapMs(aStart, aEnd, bStart, bEnd) {
+  return aStart < bEnd && bStart < aEnd;
+}
+
 export function formatDayLabel(ms, lang) {
   return new Date(ms).toLocaleDateString(lang, {
     weekday: "long",

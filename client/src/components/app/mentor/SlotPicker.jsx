@@ -13,6 +13,7 @@ import {
   formatDayShort,
   formatTime,
   generateDayTimes,
+  intervalsOverlapMs,
   isPastStart,
   todayStart,
 } from "../../../utils/slotTime";
@@ -137,7 +138,7 @@ function DayStrip({ activeDayMs, onSelectDay, disabled }) {
   );
 }
 
-function TimeOptionsList({ activeDayMs, selectedSet, atMax, disabled, onToggle }) {
+function TimeOptionsList({ activeDayMs, selectedSet, atMax, disabled, isBooked, onToggle }) {
   const { t, lang } = useLanguage();
   const c = t.app.mentorArea.proposeSlots;
 
@@ -165,10 +166,13 @@ function TimeOptionsList({ activeDayMs, selectedSet, atMax, disabled, onToggle }
           {times.map((ms) => {
             const past = isPastStart(ms);
             const selected = selectedSet.has(ms);
+            const booked = !selected && isBooked(ms);
             const label = formatTime(ms, lang);
-            const blocked = disabled || past || (atMax && !selected);
+            const blocked = disabled || past || booked || (atMax && !selected);
             const ariaLabel = past
               ? fillTemplate(c.timePast, { time: label })
+              : booked
+              ? fillTemplate(c.timeBooked, { time: label })
               : selected
               ? fillTemplate(c.timeSelected, { time: label })
               : fillTemplate(c.timeSelect, { time: label });
@@ -190,6 +194,7 @@ function TimeOptionsList({ activeDayMs, selectedSet, atMax, disabled, onToggle }
                     : "1px solid rgba(225,29,106,0.24)",
                   backgroundColor: selected ? "rgba(225,29,106,0.12)" : "#fff",
                   color: selected ? "#9f1239" : "#4a1528",
+                  textDecoration: booked ? "line-through" : "none",
                 }}
               >
                 {label}
@@ -216,6 +221,11 @@ export default function SlotPicker({
   onChange,
   maxSlots = 3,
   disabled = false,
+  // Mentor's already-occupied intervals (ms): a candidate start is unavailable
+  // when [start, start + durationMinutes) overlaps any of these. The backend
+  // re-checks on submit and stays authoritative.
+  busyRanges = [],
+  durationMinutes = 0,
 }) {
   const [activeDayMs, setActiveDayMs] = useState(() => todayStart());
 
@@ -224,13 +234,20 @@ export default function SlotPicker({
     [slots]
   );
 
+  const durationMs = durationMinutes > 0 ? durationMinutes * 60 * 1000 : 0;
+  const isBooked = useMemo(() => {
+    if (!durationMs || busyRanges.length === 0) return () => false;
+    return (ms) =>
+      busyRanges.some((b) => intervalsOverlapMs(ms, ms + durationMs, b.startMs, b.endMs));
+  }, [busyRanges, durationMs]);
+
   const toggleTime = (ms) => {
     if (disabled) return;
     if (selectedSet.has(ms)) {
       onChange(slots.filter((s) => s.startMs !== ms));
       return;
     }
-    if (slots.length >= maxSlots || isPastStart(ms)) return;
+    if (slots.length >= maxSlots || isPastStart(ms) || isBooked(ms)) return;
     onChange([...slots, { startMs: ms }]);
   };
 
@@ -246,6 +263,7 @@ export default function SlotPicker({
         selectedSet={selectedSet}
         atMax={slots.length >= maxSlots}
         disabled={disabled}
+        isBooked={isBooked}
         onToggle={toggleTime}
       />
     </Stack>

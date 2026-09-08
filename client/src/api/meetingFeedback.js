@@ -66,3 +66,22 @@ export async function submitMeetingFeedback(meetingId, actingUserId, answers) {
     throw toClientError(err);
   }
 }
+
+/**
+ * POST /api/meetings/:meetingId/another-meeting   Body: { actingUserId }
+ * Part 2 — both sides completed feedback and both said they want to meet again.
+ * Creates a fresh MentoringRequest for the same pair (existing scheduling flow);
+ * idempotent if a follow-up request is already open.
+ * -> { request, created }
+ *   403 not a participant · 404 not found · 409 both sides have not agreed.
+ */
+export async function startAnotherMeeting(meetingId, actingUserId) {
+  try {
+    const res = await http.post(`/meetings/${meetingId}/another-meeting`, {
+      actingUserId,
+    });
+    return res.data.data;
+  } catch (err) {
+    throw toClientError(err);
+  }
+}

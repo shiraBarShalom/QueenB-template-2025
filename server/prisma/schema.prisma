@@ -438,6 +438,17 @@ model Feedback {
   // Mentee-only question; always NULL on a mentor's row.
   wouldContinueMentoring ContinueMentoringInterest?
 
+  // "Would you like another mentoring meeting with this person?" — asked of BOTH
+  // participants (unlike wouldContinueMentoring, which stays mentee-only). Set
+  // only when occurred = true; NULL otherwise (DB CHECK
+  // Feedback_wants_another_only_when_occurred, added in migration
+  // 20260908090000). When BOTH participants' rows have wantsAnotherMeeting = true
+  // the pair may open a fresh MentoringRequest for the next meeting — see
+  // services/postMeetingService.js -> startAnotherMeeting. The application layer
+  // (normalizeSubmission) requires it on the occurred = true branch; it is left
+  // nullable in the DB so pre-existing feedback rows are not invalidated.
+  wantsAnotherMeeting     Boolean?
+
   // Optional short free text, either branch ("נשמח לשמוע איך היה").
   comment String?
 

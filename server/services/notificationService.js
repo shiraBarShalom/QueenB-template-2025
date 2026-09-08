@@ -101,8 +101,14 @@ function createNotification(client, row) {
 // notificationService <-> postMeetingService cycle.
 async function materializeDue(recipientId) {
   try {
-    const { materializeDuePostMeetingNotificationsForUser } = require("./postMeetingService");
+    const {
+      materializeDuePostMeetingNotificationsForUser,
+      materializeDueFeedbackRemindersForUser,
+    } = require("./postMeetingService");
+    // Order matters: the POST_MEETING_CHECK is the anchor the 2-day reminder
+    // cadence measures from, so create it first.
     await materializeDuePostMeetingNotificationsForUser(recipientId);
+    await materializeDueFeedbackRemindersForUser(recipientId);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("post-meeting notification materialization failed:", err.message);

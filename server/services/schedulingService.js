@@ -85,6 +85,97 @@ const ROLE = { MENTOR: "MENTOR", MENTEE: "MENTEE" };
 const RETRY_LIMIT = 2;
 
 // ----------------------------------------------------------------------------
+// Mentor double-booking protection (mentor-level availability).
+// ----------------------------------------------------------------------------
+// A mentor cannot hold two meetings at overlapping times, across ANY of her
+// requests. `proposeSlots` rejects a slot that overlaps one of these meetings,
+// and getMentorBusyIntervals feeds the picker so taken times are greyed out.
+//
+// Blocking set: a live agreed meeting (SCHEDULED) or one both sides have
+// confirmed attendance for (ATTENDANCE_CONFIRMED) occupies its interval.
+// NOT blocking: CANCELLED, RESCHEDULED (superseded, kept only for history),
+// COMPLETED / NOT_COMPLETED (in the past, done). Future-only: the check and the
+// read model both filter scheduledEnd > now, so a past meeting never blocks a
+// future proposal.
+const MEETING_BLOCKING_STATUSES = ["SCHEDULED", "ATTENDANCE_CONFIRMED"];
+
+// Half-open interval overlap: [aStart, aEnd) vs [bStart, bEnd). Touching exactly
+// at a boundary (aEnd === bStart) is NOT an overlap — back-to-back meetings are
+// allowed. Accepts Date objects.
+function intervalsOverlap(aStart, aEnd, bStart, bEnd) {
+  return aStart.getTime() < bEnd.getTime() && bStart.getTime() < aEnd.getTime();
+}
+
+// Every (slot, meeting) pair where a proposed slot overlaps one of the mentor's
+// blocking meetings. `client` may be a Prisma tx handle so the check is atomic
+// with the round insert (and therefore re-evaluated at accept time — a slot that
+// was free when the tab loaded is still rejected if it was booked meanwhile).
+// `excludeRequestId` skips the request's own meetings (its superseded ones are
+// already excluded by status, this is just belt-and-braces).
+async function findMentorSlotConflicts(
+  client,
+  mentorProfileId,
+  slots,
+  now,
+  excludeRequestId = null
+) {
+  const where = {
+    status: { in: MEETING_BLOCKING_STATUSES },
+    scheduledEnd: { gt: now },
+    request: { mentorProfileId },
+  };
+  if (excludeRequestId != null) where.NOT = { requestId: excludeRequestId };
+
+  const busy = await client.meeting.findMany({
+    where,
+    select: {
+      id: true,
+      requestId: true,
+      scheduledStart: true,
+      scheduledEnd: true,
+    },
+  });
+
+  const conflicts = [];
+  for (const slot of slots) {
+    for (const m of busy) {
+      if (
+        intervalsOverlap(
+          slot.startTime,
+          slot.endTime,
+          m.scheduledStart,
+          m.scheduledEnd
+        )
+      ) {
+        conflicts.push({ slot, meeting: m });
+      }
+    }
+  }
+  return conflicts;
+}
+
+// Read model for the propose-slots UI: the mentor's UPCOMING occupied intervals
+// (same blocking set as the write-side check). Read-only; the authoritative
+// rejection is in proposeSlots.
+async function getMentorBusyIntervals(rawMentorProfileId) {
+  const mentorProfileId = parseId(rawMentorProfileId, "mentorProfileId");
+  const rows = await prisma.meeting.findMany({
+    where: {
+      status: { in: MEETING_BLOCKING_STATUSES },
+      scheduledEnd: { gt: new Date() },
+      request: { mentorProfileId },
+    },
+    orderBy: { scheduledStart: "asc" },
+    select: { id: true, scheduledStart: true, scheduledEnd: true },
+  });
+  return rows.map((r) => ({
+    meetingId: r.id,
+    start: r.scheduledStart,
+    end: r.scheduledEnd,
+  }));
+}
+
+// ----------------------------------------------------------------------------
 // The transition table — the whole legal state machine in one place.
 // ----------------------------------------------------------------------------
 // Each row: from this status, a caller in `role` performing `action` (and
@@ -530,6 +621,25 @@ function proposeSlots(requestId, actingUserId, rawSlots) {
     ACTION.PROPOSE_SLOTS,
     actingUserId,
     async (tx, request) => {
+      // Mentor double-booking guard. Runs INSIDE the transaction so a slot that
+      // looked free when the mentor's tab loaded is still rejected here if a
+      // meeting was booked in the meantime (stale-tab / two-tabs race).
+      const conflicts = await findMentorSlotConflicts(
+        tx,
+        request.mentorProfileId,
+        slots,
+        new Date(),
+        request.id
+      );
+      if (conflicts.length > 0) {
+        const { slot } = conflicts[0];
+        throw new ApiError(
+          `Proposed slot ${slot.startTime.toISOString()}–${slot.endTime.toISOString()} ` +
+            `overlaps an existing scheduled meeting for this mentor`,
+          409
+        );
+      }
+
       const last = await tx.schedulingRound.findFirst({
         where: { requestId: request.id },
         orderBy: { roundNumber: "desc" },
@@ -881,4 +991,8 @@ module.exports = {
   mentorCancel,
   reschedule,
   cannotAttendMeeting,
+  MEETING_BLOCKING_STATUSES,
+  intervalsOverlap,
+  findMentorSlotConflicts,
+  getMentorBusyIntervals,
 };
