@@ -369,7 +369,8 @@ async function verify() {
     ["dashboard.waitingForResponse === DB WAITING_FOR_MENTOR_SLOTS",
       dash.counts.waitingForResponse === (raw.WAITING_FOR_MENTOR_SLOTS || 0)],
     ["dashboard.awaitingMenteeSelection === DB WAITING_FOR_MENTEE_SELECTION",
-      dash.counts.awaitingMenteeSelection === (raw.WAITING_FOR_MENTEE_SELECTION || 0)],
+      dash.co
+      unts.awaitingMenteeSelection === (raw.WAITING_FOR_MENTEE_SELECTION || 0)],
     ["dashboard.scheduledMeetings === DB MATCHED",
       dash.counts.scheduledMeetings === (raw.MATCHED || 0)],
     ["dashboard.incomingRequests length === waitingForResponse",

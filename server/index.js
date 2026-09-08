@@ -45,6 +45,7 @@ app.use("/api/admin", require("./routes/admin"));           // admin dashboard: 
 app.use("/api", require("./routes/requests"));              // mentoring requests: /api/requests/* + /api/mentees/:userId/requests
 app.use("/api", require("./routes/notifications"));         // in-app notifications: /api/users/:userId/notifications/*
 app.use("/api", require("./routes/postMeeting"));           // post-meeting flow: /api/meetings/:meetingId/feedback
+app.use("/api/whatsapp", require("./routes/whatsapp"));     // WhatsApp Companion (mentors): Twilio webhook -> existing services (read-only)
 
 // Scheduling state machine. Mounted AFTER routes/requests.js: its sub-paths
 // (/:requestId/propose-slots, /select-slot, /cannot-attend, /withdraw, /cancel)

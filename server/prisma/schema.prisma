@@ -140,6 +140,13 @@ model User {
   // the later requirement to send WhatsApp reminders - confirm with product
   // owner whether/when this should actually be collected.
   phoneNumber       String?
+  // WhatsApp Companion (feature/whatsapp-mentor). Normalized E.164, nullable,
+  // opt-in: only mentors who enrolled a WhatsApp number have a value. NOT read
+  // or written by login/register. It is the reverse-lookup key for the Twilio
+  // webhook — see server/services/whatsappService.js. Kept separate from
+  // phoneNumber on purpose (that field is a free-form contact detail; this one
+  // is a unique, format-constrained handle).
+  whatsappPhone     String?  @unique
   isAdmin           Boolean  @default(false)
   // Admin account control (Part: admin dashboard). A disabled account cannot
   // sign in and every existing session for it is revoked. Additive: existing
