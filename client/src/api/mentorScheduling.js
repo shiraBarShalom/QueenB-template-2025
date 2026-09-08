@@ -40,6 +40,21 @@ export async function fetchMentorDashboard(mentorProfileId) {
 }
 
 /**
+ * GET /api/mentors/:mentorProfileId/busy-intervals
+ * -> [{ meetingId, start, end }]  — the mentor's upcoming occupied intervals
+ * (blocking meetings only). Lets the propose-slots picker grey out taken times.
+ * The backend re-checks on submit, so this is UX only.
+ */
+export async function fetchMentorBusyIntervals(mentorProfileId) {
+  try {
+    const res = await http.get(`/mentors/${mentorProfileId}/busy-intervals`);
+    return res.data.data;
+  } catch (err) {
+    throw toClientError(err);
+  }
+}
+
+/**
  * POST /api/requests/:requestId/reject   Body: { actingUserId }
  * Delegates to schedulingService.reject on the server:
  *   403 wrong actor · 409 not WAITING_FOR_MENTOR_SLOTS / changed concurrently.

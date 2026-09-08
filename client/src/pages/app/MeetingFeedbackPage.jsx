@@ -24,11 +24,13 @@ import FavoriteRoundedIcon from "@mui/icons-material/FavoriteRounded";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { useCurrentUser } from "../../auth/useCurrentUser";
 import { ROUTES } from "../../constants/routes";
+import fillTemplate from "../../utils/fillTemplate";
 import { formatDateTimeLabel } from "../../utils/slotTime";
 import MatchQueensLogo from "../../components/MatchQueensLogo";
 import {
   fetchMeetingFeedback,
   submitMeetingFeedback,
+  startAnotherMeeting,
 } from "../../api/meetingFeedback";
 
 /**
@@ -178,9 +180,39 @@ export default function MeetingFeedbackPage() {
   const [rating, setRating] = useState(0);
   const [wasHelpful, setWasHelpful] = useState("");
   const [wouldContinue, setWouldContinue] = useState("");
+  const [wantsAnother, setWantsAnother] = useState(""); // "" | "YES" | "NO" — both roles
   const [comment, setComment] = useState("");
 
+  // Part 2 — "schedule another meeting" once both sides said YES.
+  const [anotherBusy, setAnotherBusy] = useState(false);
+  const [anotherError, setAnotherError] = useState("");
+
   const goPersonalArea = () => navigate(ROUTES.APP_PERSONAL_AREA);
+
+  const handleStartAnother = async () => {
+    if (anotherBusy) return;
+    setAnotherBusy(true);
+    setAnotherError("");
+    try {
+      await startAnotherMeeting(meetingId, actingUserId);
+      // The new request now lives where that side manages scheduling.
+      navigate(
+        ctx?.role === "MENTOR"
+          ? ROUTES.APP_MENTOR_AREA
+          : ROUTES.APP_PERSONAL_AREA
+      );
+    } catch (err) {
+      setAnotherError(
+        err.status === 409
+          ? c.continuation.notReady
+          : c.continuation.startError
+      );
+      // Re-read so the button reflects reality (e.g. a follow-up already opened).
+      load();
+    } finally {
+      setAnotherBusy(false);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!actingUserId) {
@@ -219,13 +251,17 @@ export default function MeetingFeedbackPage() {
     setSubmitting(true);
     setFormError("");
     try {
-      await submitMeetingFeedback(meetingId, actingUserId, answers);
+      // The POST returns the same context shape (now with alreadySubmitted:true
+      // and the fresh `continuation` block) — keep it so the success screen can
+      // offer "schedule another meeting" when both sides said yes.
+      const updated = await submitMeetingFeedback(meetingId, actingUserId, answers);
+      if (updated) setCtx(updated);
       setPhase("done");
     } catch (err) {
       if (err.status === 409) {
         // Already submitted elsewhere, or the meeting state changed under us —
         // reconcile with the server rather than pretend success.
-        if (/already/i.test(err.message)) setPhase("already");
+        if (/already/i.test(err.message)) load();
         else {
           setFormError(c.conflictError);
           load();
@@ -267,12 +303,17 @@ export default function MeetingFeedbackPage() {
       setFormError(c.yes.helpfulRequired);
       return;
     }
+    if (wantsAnother !== "YES" && wantsAnother !== "NO") {
+      setFormError(c.yes.anotherRequired);
+      return;
+    }
     doSubmit({
       occurred: true,
       rating,
       wasHelpful,
       wouldContinueMentoring:
         ctx.role === "MENTEE" && wouldContinue ? wouldContinue : undefined,
+      wantsAnotherMeeting: wantsAnother === "YES",
       comment: comment.trim() || undefined,
     });
   };
@@ -352,29 +393,36 @@ export default function MeetingFeedbackPage() {
     );
   }
 
-  if (phase === "already") {
+  if (phase === "already" || phase === "done") {
+    const copy = phase === "done" ? c.success : c.already;
+    const cont = ctx && ctx.continuation ? ctx.continuation : null;
+    const waiting =
+      cont && cont.myAnswer === true && !cont.bothWantAnother
+        ? fillTemplate(c.continuation.waitingOther, {
+            name: ctx.otherPartyName || "",
+          })
+        : "";
     return (
       <FocusShell>
         <Header title={c.pageTitle} />
+        {anotherError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {anotherError}
+          </Alert>
+        )}
         <OutcomePanel
-          title={c.already.title}
-          body={c.already.body}
-          primaryLabel={c.already.cta}
+          title={copy.title}
+          body={waiting ? `${copy.body} ${waiting}` : copy.body}
+          primaryLabel={copy.cta}
           onPrimary={goPersonalArea}
-        />
-      </FocusShell>
-    );
-  }
-
-  if (phase === "done") {
-    return (
-      <FocusShell>
-        <Header title={c.pageTitle} />
-        <OutcomePanel
-          title={c.success.title}
-          body={c.success.body}
-          primaryLabel={c.success.cta}
-          onPrimary={goPersonalArea}
+          secondaryLabel={
+            cont && cont.canStartAnother ? c.continuation.scheduleAnother : undefined
+          }
+          onSecondary={
+            cont && cont.canStartAnother && !anotherBusy
+              ? handleStartAnother
+              : undefined
+          }
         />
       </FocusShell>
     );
@@ -563,6 +611,32 @@ export default function MeetingFeedbackPage() {
                 </RadioGroup>
               </FormControl>
             )}
+
+            {/* Part 2 — asked of BOTH the mentee and the mentor. */}
+            <FormControl component="fieldset" disabled={submitting}>
+              <FormLabel
+                component="legend"
+                sx={{ fontWeight: 800, color: INK, "&.Mui-focused": { color: INK }, mb: 0.5 }}
+              >
+                {ctx.otherPartyName
+                  ? fillTemplate(c.yes.anotherQuestion, { name: ctx.otherPartyName })
+                  : c.yes.anotherQuestionGeneric}
+              </FormLabel>
+              <RadioGroup
+                value={wantsAnother}
+                onChange={(e) => { setWantsAnother(e.target.value); setFormError(""); }}
+              >
+                {["YES", "NO"].map((key) => (
+                  <FormControlLabel
+                    key={key}
+                    value={key}
+                    control={<Radio />}
+                    label={<Typography sx={{ color: INK }}>{c.yes.another[key]}</Typography>}
+                    sx={{ py: 0.3, mx: 0 }}
+                  />
+                ))}
+              </RadioGroup>
+            </FormControl>
 
             <TextField
               label={c.yes.commentLabel}

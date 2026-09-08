@@ -48,8 +48,9 @@ export function notificationNavTarget(n) {
     case "MENTORING_REQUEST_RECEIVED":
       return "/app/mentor-area";
     case "POST_MEETING_CHECK":
+    case "FEEDBACK_REMINDER":
       // The dedicated feedback page for this specific meeting. Both the mentee
-      // and the mentor receive this; the backend authorises each of them.
+      // and the mentor receive these; the backend authorises each of them.
       return n.meetingId ? meetingFeedbackPath(n.meetingId) : "/app/personal-area";
     case "REQUEST_CANCELLED":
       if (p.reason === "withdrawn") return "/app/mentor-area";

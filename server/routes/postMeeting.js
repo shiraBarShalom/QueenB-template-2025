@@ -57,4 +57,32 @@ router.post("/meetings/:meetingId/feedback", async (req, res) => {
   }
 });
 
+// POST /api/meetings/:meetingId/another-meeting
+// Body: { actingUserId }
+// Part 2 — once BOTH participants completed feedback and BOTH said they want to
+// meet again, either of them opens the next meeting. Creates a fresh
+// MentoringRequest for the same (mentee, mentorProfile) pair via the existing
+// scheduling flow (the Part 1 state machine is untouched). Idempotent: returns
+// the already-open follow-up request if one exists.
+// 400 bad id · 403 not a participant · 404 meeting not found ·
+// 409 both participants have not chosen to meet again.
+router.post("/meetings/:meetingId/another-meeting", async (req, res) => {
+  try {
+    const data = await postMeetingService.startAnotherMeeting(
+      req.params.meetingId,
+      req.body.actingUserId
+    );
+    return sendSuccess(
+      res,
+      data,
+      data.created
+        ? "Another meeting request created"
+        : "A follow-up request is already open",
+      data.created ? 201 : 200
+    );
+  } catch (err) {
+    return handleError(err, res);
+  }
+});
+
 module.exports = router;

@@ -15,9 +15,10 @@ import { useLanguage } from "../../i18n/LanguageProvider";
 import { useCurrentUser } from "../../auth/useCurrentUser";
 import { ROUTES } from "../../constants/routes";
 import fillTemplate from "../../utils/fillTemplate";
-import { isPastStart, toPayloadSlot } from "../../utils/slotTime";
+import { intervalsOverlapMs, isPastStart, toPayloadSlot } from "../../utils/slotTime";
 import {
   fetchMentoringRequest,
+  fetchMentorBusyIntervals,
   proposeMentoringRequestSlots,
 } from "../../api/mentorScheduling";
 import PageHeader from "../../components/app/PageHeader";
@@ -53,10 +54,28 @@ export default function ProposeSlotsPage() {
   const [errorKind, setErrorKind] = useState(null); // "load" | "notFound" | "forbidden" | "changed"
   const [request, setRequest] = useState(null);
   const [slots, setSlots] = useState([]); // [{ startMs }]
+  const [busyRanges, setBusyRanges] = useState([]); // [{ startMs, endMs }] — mentor's occupied intervals
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
 
   const durationMinutes = request?.mentorProfile?.meetingDurationMinutes;
+
+  // The mentor's upcoming occupied intervals. Advisory only — proposeSlots
+  // re-checks server-side; a failure here just means no greying-out.
+  const loadBusy = useCallback(async (mentorProfileId) => {
+    if (!mentorProfileId) return;
+    try {
+      const rows = await fetchMentorBusyIntervals(mentorProfileId);
+      setBusyRanges(
+        (Array.isArray(rows) ? rows : []).map((r) => ({
+          startMs: new Date(r.start).getTime(),
+          endMs: new Date(r.end).getTime(),
+        }))
+      );
+    } catch {
+      setBusyRanges([]);
+    }
+  }, []);
 
   const loadRequest = useCallback(async () => {
     setPhase("loading");
@@ -78,19 +97,32 @@ export default function ProposeSlotsPage() {
       }
       setRequest(data);
       setPhase("ready");
+      loadBusy(data?.mentorProfile?.id);
     } catch (err) {
       setErrorKind(err.status === 404 ? "notFound" : "load");
       setPhase("error");
     }
-  }, [requestId]);
+  }, [requestId, loadBusy]);
 
   useEffect(() => {
     loadRequest();
   }, [loadRequest]);
 
   const hasPast = useMemo(() => slots.some((s) => isPastStart(s.startMs)), [slots]);
+  const durationMs = Number.isFinite(durationMinutes) ? durationMinutes * 60 * 1000 : 0;
+  const hasConflict = useMemo(
+    () =>
+      durationMs > 0 &&
+      slots.some((s) =>
+        busyRanges.some((b) =>
+          intervalsOverlapMs(s.startMs, s.startMs + durationMs, b.startMs, b.endMs)
+        )
+      ),
+    [slots, busyRanges, durationMs]
+  );
   const countOk = slots.length >= MIN_SLOTS && slots.length <= MAX_SLOTS;
-  const canSubmit = phase === "ready" && countOk && !hasPast && !submitting;
+  const canSubmit =
+    phase === "ready" && countOk && !hasPast && !hasConflict && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return; // guards double-submit + invalid state
@@ -103,7 +135,13 @@ export default function ProposeSlotsPage() {
       await proposeMentoringRequestSlots(requestId, actingUserId, payload);
       navigate(ROUTES.APP_MENTOR_AREA, { state: { flash: "slotsProposed" } });
     } catch (err) {
-      if (err.status === 409) {
+      if (err.status === 409 && /overlap|scheduled meeting|booked/i.test(err.message || "")) {
+        // A proposed time was booked for this mentor in the meantime — refresh
+        // the occupied intervals and let her pick another (stay on the picker).
+        setFormError(c.error409Conflict);
+        setSubmitting(false);
+        loadBusy(request?.mentorProfile?.id);
+      } else if (err.status === 409) {
         setErrorKind("changed");
         setPhase("error");
       } else if (err.status === 404) {
@@ -201,6 +239,8 @@ export default function ProposeSlotsPage() {
             onChange={setSlots}
             maxSlots={MAX_SLOTS}
             disabled={submitting}
+            busyRanges={busyRanges}
+            durationMinutes={durationMinutes}
           />
         </ContentCard>
 
@@ -221,6 +261,11 @@ export default function ProposeSlotsPage() {
             {hasPast && (
               <Alert severity="warning" role="alert">
                 {c.pastSelected}
+              </Alert>
+            )}
+            {hasConflict && (
+              <Alert severity="warning" role="alert">
+                {c.conflictSelected}
               </Alert>
             )}
             {formError && (
