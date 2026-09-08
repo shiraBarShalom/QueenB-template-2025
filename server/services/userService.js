@@ -6,6 +6,7 @@
 const crypto = require("crypto");
 const prisma = require("../prismaClient");
 const { ApiError } = require("../utils/prismaError");
+const { normalizeE164, isE164 } = require("../utils/phone");
 
 // ----------------------------------------------------------------------------
 // Password hashing (built-in crypto.scrypt — no external dependency).
@@ -164,6 +165,30 @@ async function updateUser(rawId, body = {}) {
   const spokenLanguages = spokenLanguagesConnect(body.spokenLanguages);
   if (spokenLanguages) {
     data.spokenLanguages = spokenLanguages;
+  }
+
+  // WhatsApp Companion (feature/whatsapp-mentor): when the user saves a phone
+  // number in the ordinary format they know ("0555563038", "055-556-3038",
+  // "+972 55 556 3038"), also mirror it to the normalized E.164 lookup key the
+  // WhatsApp webhook matches on. Purely additive:
+  //   * only runs when a non-empty phoneNumber is being written
+  //   * only sets whatsappPhone when the value parses to valid E.164
+  //   * never clears whatsappPhone, never fails the profile save
+  //   * if the number already belongs to a DIFFERENT user, the profile still
+  //     saves — we just don't link WhatsApp (whatsappPhone is @unique)
+  // phoneNumber itself is stored exactly as before. whatsappPhone is NOT in
+  // WRITABLE_FIELDS, so a client can never set it directly.
+  if (typeof data.phoneNumber === "string" && data.phoneNumber.trim() !== "") {
+    const e164 = normalizeE164(data.phoneNumber);
+    if (e164 && isE164(e164)) {
+      const holder = await prisma.user.findUnique({
+        where: { whatsappPhone: e164 },
+        select: { id: true },
+      });
+      if (!holder || holder.id === id) {
+        data.whatsappPhone = e164;
+      }
+    }
   }
 
   if (Object.keys(data).length === 0) {
