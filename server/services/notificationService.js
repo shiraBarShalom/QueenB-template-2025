@@ -115,7 +115,12 @@ async function materializeDue(recipientId) {
   }
 }
 
+function notificationsReady() {
+  return Boolean(prisma.notification);
+}
+
 async function listForUser(rawUserId, { limit } = {}) {
+  if (!notificationsReady()) return { items: [], unreadCount: 0 };
   const recipientId = parseId(rawUserId, "userId");
   const take = Math.min(Math.max(Number(limit) || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
@@ -137,6 +142,7 @@ async function listForUser(rawUserId, { limit } = {}) {
 }
 
 async function unreadCountForUser(rawUserId) {
+  if (!notificationsReady()) return { unreadCount: 0 };
   const recipientId = parseId(rawUserId, "userId");
   await materializeDue(recipientId);
   const unreadCount = await prisma.notification.count({
@@ -148,6 +154,7 @@ async function unreadCountForUser(rawUserId) {
 // Mark ONE notification read. Scoped by recipientId so a mismatched id simply
 // affects 0 rows -> 404, never another user's notification.
 async function markRead(rawUserId, rawNotificationId) {
+  if (!notificationsReady()) throw new ApiError("Notification not found", 404);
   const recipientId = parseId(rawUserId, "userId");
   const id = parseId(rawNotificationId, "notificationId");
 
@@ -169,6 +176,7 @@ async function markRead(rawUserId, rawNotificationId) {
 }
 
 async function markAllRead(rawUserId) {
+  if (!notificationsReady()) return { unreadCount: 0 };
   const recipientId = parseId(rawUserId, "userId");
   await prisma.notification.updateMany({
     where: { recipientId, channel: "IN_APP", readAt: null },

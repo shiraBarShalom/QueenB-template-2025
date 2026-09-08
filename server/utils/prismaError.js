@@ -52,8 +52,10 @@ function handleError(err, res) {
     }
   }
 
-  // Unknown / unexpected — let the global error handler log + 500 it.
-  throw err;
+  // Never rethrow from a route catch — that crashes the process and takes
+  // down login / logout with it. Answer 500 and keep the server up.
+  console.error(err);
+  return sendError(res, "Something went wrong", 500);
 }
 
 module.exports = { ApiError, handleError };

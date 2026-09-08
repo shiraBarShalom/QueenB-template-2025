@@ -8,15 +8,24 @@ import { ROUTES } from "../constants/routes";
  * Route guards ported from feature/mentorme-login-page and adapted to this
  * branch's route table (login lives at ROUTES.LOGIN = "/login"; the
  * authenticated area is ROUTES.APP = "/app"). `RequireOnboarding` from the
- * incoming branch was dropped — there is no onboarding flow here.
+ * incoming branch is restored here: after sign-up the user fills /onboarding
+ * before entering /app. Existing complete profiles still go straight to /app.
  *
  * <RequireAuth> wraps the ROUTES.APP subtree and the standalone
  * ROUTES.APP_MEETING_FEEDBACK route in App.js; <RequireAdmin> wraps /admin
  * (checked against the real session user's isAdmin). The guarded pages read
  * identity from auth/useCurrentUser -> AuthContext / useAuth(), so they must
  * not mount until GET /api/users/me has resolved a real user. <GuestOnly>
- * guards /login (a signed-in visitor is bounced to /app).
+ * guards /login and sends the user to onboarding, /app, or /admin.
  */
+
+export function postAuthPath(user) {
+  if (!user) return ROUTES.LOGIN;
+  if (user.isAdmin) return "/admin";
+  const onboarded = Boolean(user.profile?.onboardingComplete || user.onboardingComplete);
+  return onboarded ? ROUTES.APP : ROUTES.ONBOARDING;
+}
+
 function LoadingScreen() {
   return (
     <Box sx={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
@@ -35,11 +44,21 @@ export function RequireAuth({ children }) {
   return children;
 }
 
+export function RequireOnboarding({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to={ROUTES.LOGIN} replace />;
+  if (user.isAdmin) return children;
+  const onboarded = Boolean(user.profile?.onboardingComplete || user.onboardingComplete);
+  if (!onboarded) return <Navigate to={ROUTES.ONBOARDING} replace />;
+  return children;
+}
+
 export function GuestOnly({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <LoadingScreen />;
   if (!user) return children;
-  return <Navigate to={ROUTES.APP} replace />;
+  return <Navigate to={postAuthPath(user)} replace />;
 }
 
 // Admin area. Not signed in -> /login; signed in but not an admin -> /app.

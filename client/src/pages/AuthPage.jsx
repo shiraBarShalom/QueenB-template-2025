@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Alert,
   Box,
@@ -9,23 +9,25 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { ThemeProvider } from "@mui/material/styles";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import { useAuth } from "../context/AuthContext";
-import { ROUTES } from "../constants/routes";
+import { useLanguage } from "../i18n/LanguageProvider";
+import LanguageSwitcher from "../components/common/LanguageSwitcher";
 
 /**
  * Sign in / sign up.
  *
  * VISUAL: this project's own AuthPage UI — soft pink gradient, the "{ }" accent
- * that echoes the landing page, the MentorMe wordmark, the pill tab switcher and
+ * that echoes the landing page, the Match Queens wordmark, the pill tab switcher and
  * the glass form card. Unchanged.
  *
  * BEHAVIOUR: wired to the real session auth on this branch (no mock / demo):
  *   sign up -> POST /api/users/register  ({ displayName, email, password })
  *   sign in -> POST /api/users/login     ({ email, password })
- * Both set the httpOnly `mentorme.sid` session cookie via AuthContext; on
- * success we go to the authenticated app shell (ROUTES.APP).
+ * Both set the httpOnly `mentorme.sid` session cookie via AuthContext. After
+ * sign-up, GuestOnly sends the user to /onboarding to fill in their details.
  *
  * Two elements exist only to support real auth (the original mock UI had
  * neither): an inline <Alert> for server / network errors, and a disabled
@@ -42,8 +44,9 @@ const emptyForm = {
 };
 
 function AuthPage() {
-  const navigate = useNavigate();
   const { signIn, signUp, sessionError } = useAuth();
+  const { t, dir, theme } = useLanguage();
+  const copy = t.auth;
   const [mode, setMode] = useState("signin");
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
@@ -53,14 +56,38 @@ function AuthPage() {
   const [apiError, setApiError] = useState("");
 
   const isSignUp = mode === "signup";
+  const isRtl = dir === "rtl";
+  const headline = isSignUp ? copy.createAccount : copy.welcomeBack;
 
-  const headline = useMemo(
-    () =>
-      isSignUp
-        ? "Create your account and find the mentor who fits."
-        : "Welcome back — continue your mentoring journey.",
-    [isSignUp]
-  );
+  // MUI outlined labels stay physically left unless we pin them to the
+  // inline-start side. Password fields also need extra end-padding for the eye.
+  const fieldSx = {
+    "& .MuiOutlinedInput-input": {
+      textAlign: isRtl ? "right" : "left",
+    },
+    "& .MuiInputLabel-root": {
+      left: isRtl ? "auto" : 0,
+      right: isRtl ? 0 : "auto",
+      transformOrigin: isRtl ? "top right" : "top left",
+    },
+    "& .MuiInputLabel-root:not(.MuiInputLabel-shrink)": {
+      transform: isRtl
+        ? "translate(-14px, 16px) scale(1)"
+        : "translate(14px, 16px) scale(1)",
+    },
+    "& .MuiInputLabel-shrink": {
+      transform: isRtl
+        ? "translate(-14px, -9px) scale(0.75)"
+        : "translate(14px, -9px) scale(0.75)",
+    },
+  };
+  const passwordFieldSx = {
+    ...fieldSx,
+    "& .MuiOutlinedInput-input": {
+      ...fieldSx["& .MuiOutlinedInput-input"],
+      paddingInlineEnd: "46px",
+    },
+  };
 
   const handleModeChange = (nextMode) => {
     setMode(nextMode);
@@ -81,26 +108,26 @@ function AuthPage() {
     const next = {};
 
     if (isSignUp && !form.name.trim()) {
-      next.name = "Name is required";
+      next.name = copy.nameRequired;
     }
 
     if (!form.email.trim()) {
-      next.email = "Email is required";
+      next.email = copy.emailRequired;
     } else if (!EMAIL_PATTERN.test(form.email.trim())) {
-      next.email = "Enter a valid email";
+      next.email = copy.emailInvalid;
     }
 
     if (!form.password) {
-      next.password = "Password is required";
+      next.password = copy.passwordRequired;
     } else if (isSignUp && form.password.length < 12) {
-      next.password = "Use at least 12 characters";
+      next.password = copy.passwordShort;
     }
 
     if (isSignUp) {
       if (!form.confirmPassword) {
-        next.confirmPassword = "Confirm your password";
+        next.confirmPassword = copy.confirmRequired;
       } else if (form.confirmPassword !== form.password) {
-        next.confirmPassword = "Passwords do not match";
+        next.confirmPassword = copy.confirmMismatch;
       }
     }
 
@@ -129,7 +156,8 @@ function AuthPage() {
       }
       setForm(emptyForm);
       setErrors({});
-      navigate(ROUTES.APP, { replace: true });
+      // GuestOnly / postAuthPath sends new accounts to /onboarding and
+      // completed profiles into /app. Do not hard-route everyone to /app.
     } catch (error) {
       const serverData = error.response?.data;
       const fieldErrors = serverData?.data?.fields;
@@ -140,16 +168,16 @@ function AuthPage() {
           password: fieldErrors.password?.[0],
         });
       }
-      setApiError(
-        serverData?.message || "Could not connect to MentorMe. Please try again."
-      );
+      setApiError(serverData?.message || copy.connectError);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
+    <ThemeProvider theme={theme}>
     <Box
+      dir={dir}
       sx={{
         minHeight: "100vh",
         position: "relative",
@@ -166,6 +194,9 @@ function AuthPage() {
         `,
       }}
     >
+      <Box sx={{ position: "absolute", top: 16, insetInlineEnd: 16, zIndex: 2 }}>
+        <LanguageSwitcher variant="button" label={t.nav.language} />
+      </Box>
       <Box
         aria-hidden
         sx={{
@@ -210,9 +241,9 @@ function AuthPage() {
         <Typography
           component="h1"
           sx={{
-            fontFamily: '"Fraunces", Georgia, serif',
+            fontFamily: "var(--mq-font-display), Georgia, serif",
             fontWeight: 700,
-            fontSize: { xs: "3rem", sm: "3.75rem" },
+            fontSize: { xs: "2.4rem", sm: "3.25rem" },
             lineHeight: 1.05,
             letterSpacing: "-0.03em",
             color: "#9f1239",
@@ -221,7 +252,7 @@ function AuthPage() {
             textShadow: "0 10px 40px rgba(190, 24, 93, 0.18)",
           }}
         >
-          MentorMe
+          Match Queens
         </Typography>
 
         <Typography
@@ -254,8 +285,8 @@ function AuthPage() {
           }}
         >
           {[
-            { id: "signin", label: "Sign in" },
-            { id: "signup", label: "Sign up" },
+            { id: "signin", label: copy.signIn },
+            { id: "signup", label: copy.signUp },
           ].map((tab) => {
             const active = mode === tab.id;
             return (
@@ -309,18 +340,19 @@ function AuthPage() {
 
           {isSignUp && (
             <TextField
-              label="Name"
+              label={copy.name}
               name="name"
               autoComplete="name"
               value={form.name}
               onChange={handleChange("name")}
               error={Boolean(errors.name)}
               helperText={errors.name}
+              sx={fieldSx}
             />
           )}
 
           <TextField
-            label="Email"
+            label={copy.email}
             name="email"
             type="email"
             autoComplete="email"
@@ -328,10 +360,11 @@ function AuthPage() {
             onChange={handleChange("email")}
             error={Boolean(errors.email)}
             helperText={errors.email}
+            sx={fieldSx}
           />
 
           <TextField
-            label="Password"
+            label={copy.password}
             name="password"
             type={showPassword ? "text" : "password"}
             autoComplete={isSignUp ? "new-password" : "current-password"}
@@ -339,6 +372,7 @@ function AuthPage() {
             onChange={handleChange("password")}
             error={Boolean(errors.password)}
             helperText={errors.password}
+            sx={passwordFieldSx}
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
@@ -355,9 +389,20 @@ function AuthPage() {
             }}
           />
 
+          {!isSignUp && (
+            <Button
+              component={Link}
+              to="/forgot-password"
+              variant="text"
+              sx={{ alignSelf: "flex-start", px: 0, minWidth: 0 }}
+            >
+              {copy.forgotPassword}
+            </Button>
+          )}
+
           {isSignUp && (
             <TextField
-              label="Confirm password"
+              label={copy.confirmPassword}
               name="confirmPassword"
               type={showConfirm ? "text" : "password"}
               autoComplete="new-password"
@@ -365,6 +410,7 @@ function AuthPage() {
               onChange={handleChange("confirmPassword")}
               error={Boolean(errors.confirmPassword)}
               helperText={errors.confirmPassword}
+              sx={passwordFieldSx}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
@@ -391,11 +437,12 @@ function AuthPage() {
             disabled={submitting}
             sx={{ mt: 0.5 }}
           >
-            {submitting ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
+            {submitting ? copy.wait : isSignUp ? copy.submitSignUp : copy.submitSignIn}
           </Button>
         </Box>
       </Box>
     </Box>
+    </ThemeProvider>
   );
 }
 

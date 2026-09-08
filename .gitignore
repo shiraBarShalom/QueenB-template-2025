@@ -7,6 +7,9 @@ server/node_modules/
 client/build/
 dist/
 
+# Local mentor applications (emails + request payloads)
+server/data/*.json
+
 # Environment variables
 .env
 .env.local

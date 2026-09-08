@@ -59,12 +59,16 @@ pool.on("error", (err) => {
   console.error("[auth] Unexpected error on idle session-store client:", err.message);
 });
 
+// The app DB role cannot CREATE tables. Use the existing connect-pg-simple
+// table from the SQL migrations instead of trying to create `session`.
+const SESSION_TABLE = "user_sessions";
+
 const sessionMiddleware = session({
   name: "mentorme.sid",
   store: new PgSession({
     pool,
-    tableName: "session",
-    createTableIfMissing: true,
+    tableName: SESSION_TABLE,
+    createTableIfMissing: false,
   }),
   secret: resolveSecret(),
   resave: false,
@@ -81,4 +85,9 @@ const sessionMiddleware = session({
 // `pool` is exported so the admin "sign out everywhere" / disable-account
 // actions can delete rows from the connect-pg-simple `session` table directly
 // (it is infra, not a Prisma model).
-module.exports = { sessionMiddleware, sessionCookieName: "mentorme.sid", sessionPool: pool };
+module.exports = {
+  sessionMiddleware,
+  sessionCookieName: "mentorme.sid",
+  sessionPool: pool,
+  sessionTableName: SESSION_TABLE,
+};

@@ -14,13 +14,14 @@
 // ============================================================================
 
 const prisma = require("../prismaClient");
+const db = require("../db");
 const { getSafeUserById } = require("./authService");
 const { requestPasswordReset } = require("./passwordResetService");
 const {
   getMentoringStats,
   getMentoringStatsByUserIds,
 } = require("./adminMeetingsService");
-const { sessionPool } = require("../config/session");
+const { sessionPool, sessionTableName } = require("../config/session");
 
 class AdminActionError extends Error {
   constructor(message, statusCode = 400) {
@@ -32,7 +33,7 @@ class AdminActionError extends Error {
 
 async function deleteSessionsForUser(userId) {
   const result = await sessionPool.query(
-    "DELETE FROM \"session\" WHERE sess -> 'user' ->> 'id' = $1",
+    `DELETE FROM ${sessionTableName} WHERE sess -> 'user' ->> 'id' = $1`,
     [String(userId)]
   );
   return result.rowCount || 0;
@@ -53,62 +54,130 @@ function toListUser(user, meetingsAsMentor) {
   };
 }
 
-async function listUsers({ page, limit, search }) {
-  const skip = (page - 1) * limit;
-  const where = search
-    ? {
-        OR: [
-          { email: { contains: search, mode: "insensitive" } },
-          { fullName: { contains: search, mode: "insensitive" } },
-        ],
-      }
-    : {};
-
-  const [rows, total] = await Promise.all([
-    prisma.user.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        isAdmin: true,
-        isActive: true,
-        onboardingComplete: true,
-        createdAt: true,
-        mentorProfile: { select: { id: true } },
-      },
-    }),
-    prisma.user.count({ where }),
-  ]);
-
-  const stats = await getMentoringStatsByUserIds(rows.map((r) => Number(r.id)));
-  return {
-    users: rows.map((user) =>
-      toListUser(user, stats[Number(user.id)]?.meetingsAsMentor || 0)
+async function listUsersFromSql({ page, limit, search }) {
+  const offset = (page - 1) * limit;
+  const pattern = `%${search || ""}%`;
+  const [users, count] = await Promise.all([
+    db.query(
+      `SELECT u.id, u.email, u.display_name, u.is_admin, u.is_active, u.created_at,
+              u.onboarding_complete,
+              EXISTS(SELECT 1 FROM mentors m WHERE m.user_id = u.id) AS has_mentor_profile
+       FROM users u
+       WHERE $1 = '' OR u.email ILIKE $2 OR u.display_name ILIKE $2
+       ORDER BY u.created_at DESC
+       LIMIT $3 OFFSET $4`,
+      [search || "", pattern, limit, offset]
     ),
-    total,
+    db.query(
+      `SELECT COUNT(*)::int AS total
+       FROM users
+       WHERE $1 = '' OR email ILIKE $2 OR display_name ILIKE $2`,
+      [search || "", pattern]
+    ),
+  ]);
+  return {
+    users: users.rows.map((row) => ({
+      id: Number(row.id),
+      email: row.email,
+      displayName: row.display_name,
+      isAdmin: row.is_admin,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      onboardingComplete: row.onboarding_complete,
+      hasMentorProfile: row.has_mentor_profile,
+      roles: row.has_mentor_profile ? ["MENTEE", "MENTOR"] : ["MENTEE"],
+      meetingsAsMentor: 0,
+    })),
+    total: count.rows[0].total,
     page,
     limit,
   };
 }
 
+async function listUsers({ page, limit, search }) {
+  try {
+    const skip = (page - 1) * limit;
+    const where = search
+      ? {
+          OR: [
+            { email: { contains: search, mode: "insensitive" } },
+            { fullName: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {};
+
+    const [rows, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          email: true,
+          fullName: true,
+          isAdmin: true,
+          isActive: true,
+          onboardingComplete: true,
+          createdAt: true,
+          mentorProfile: { select: { id: true } },
+        },
+      }),
+      prisma.user.count({ where }),
+    ]);
+
+    let stats = {};
+    try {
+      stats = await getMentoringStatsByUserIds(rows.map((r) => Number(r.id)));
+    } catch {
+      stats = {};
+    }
+    return {
+      users: rows.map((user) =>
+        toListUser(user, stats[Number(user.id)]?.meetingsAsMentor || 0)
+      ),
+      total,
+      page,
+      limit,
+    };
+  } catch {
+    return listUsersFromSql({ page, limit, search });
+  }
+}
+
 async function getAdminStats() {
-  const [total, active, admins, mentors] = await Promise.all([
-    prisma.user.count(),
-    prisma.user.count({ where: { isActive: true } }),
-    prisma.user.count({ where: { isAdmin: true } }),
-    prisma.user.count({ where: { mentorProfile: { isNot: null } } }),
-  ]);
-  return { total, active, admins, mentors };
+  try {
+    const [total, active, admins, mentors] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { isActive: true } }),
+      prisma.user.count({ where: { isAdmin: true } }),
+      prisma.user.count({ where: { mentorProfile: { isNot: null } } }),
+    ]);
+    return { total, active, admins, mentors };
+  } catch {
+    const result = await db.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(*) FILTER (WHERE is_active)::int AS active,
+         COUNT(*) FILTER (WHERE is_admin)::int AS admins,
+         COUNT(*) FILTER (
+           WHERE EXISTS (SELECT 1 FROM mentors m WHERE m.user_id = users.id)
+         )::int AS mentors
+       FROM users`
+    );
+    return result.rows[0];
+  }
 }
 
 async function getUserById(id) {
   const user = await getSafeUserById(id);
   if (!user) return null;
-  const stats = await getMentoringStats(id);
+  let stats = { meetingsAsMentor: 0, meetingsAsMentee: 0 };
+  try {
+    stats = await getMentoringStats(id);
+  } catch {
+    /* stats stay at zero when the Prisma meeting models are missing */
+  }
   return { ...user, ...stats };
 }
 

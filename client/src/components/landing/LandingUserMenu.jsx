@@ -120,12 +120,14 @@ export default function LandingUserMenu({ variant = "desktop", onNavigate }) {
             fullWidth
             startIcon={<item.icon fontSize="small" />}
             sx={{
+              gap: 1,
               justifyContent: "flex-start",
               fontFamily: "var(--mq-font-body)",
               fontWeight: 600,
               fontSize: "1.05rem",
               color: "#4a1528",
               py: 1.2,
+              "& .MuiButton-startIcon": { margin: 0 },
             }}
           >
             {item.label}
@@ -137,12 +139,14 @@ export default function LandingUserMenu({ variant = "desktop", onNavigate }) {
           fullWidth
           startIcon={<LogoutRoundedIcon fontSize="small" />}
           sx={{
+            gap: 1,
             justifyContent: "flex-start",
             fontFamily: "var(--mq-font-body)",
             fontWeight: 600,
             fontSize: "1.05rem",
             color: "#6d3049",
             py: 1.2,
+            "& .MuiButton-startIcon": { margin: 0 },
           }}
         >
           {nav.logout}
@@ -207,7 +211,7 @@ export default function LandingUserMenu({ variant = "desktop", onNavigate }) {
             onClick={() => setAnchor(null)}
             sx={{ py: 1.1, fontFamily: "var(--mq-font-body)", fontWeight: 600 }}
           >
-            <ListItemIcon sx={{ color: "#e11d6a" }}>
+            <ListItemIcon sx={{ color: "#e11d6a", minWidth: 36, mr: 0 }}>
               <item.icon fontSize="small" />
             </ListItemIcon>
             {item.label}
@@ -219,7 +223,7 @@ export default function LandingUserMenu({ variant = "desktop", onNavigate }) {
           disabled={signingOut}
           sx={{ py: 1.1, fontFamily: "var(--mq-font-body)", fontWeight: 600, color: "#6d3049" }}
         >
-          <ListItemIcon sx={{ color: "#6d3049" }}>
+          <ListItemIcon sx={{ color: "#6d3049", minWidth: 36, mr: 0 }}>
             <LogoutRoundedIcon fontSize="small" />
           </ListItemIcon>
           {nav.logout}

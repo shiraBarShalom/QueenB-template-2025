@@ -171,6 +171,7 @@ async function getMentoringStats(userId) {
 }
 
 async function listReport({ status, participantId } = {}) {
+  try {
   const where = {};
   if (status && REPORT_STATUSES.includes(status)) {
     where.status = status;
@@ -189,6 +190,9 @@ async function listReport({ status, participantId } = {}) {
   });
 
   return requests.map(toReportRow);
+  } catch {
+    return [];
+  }
 }
 
 async function getReportById(id) {
@@ -222,23 +226,28 @@ async function getReportById(id) {
 }
 
 async function listCalendar() {
-  const meetings = await prisma.meeting.findMany({
-    orderBy: { scheduledStart: "asc" },
-    include: { request: { include: REQUEST_INCLUDE } },
-  });
+  try {
+    const meetings = await prisma.meeting.findMany({
+      orderBy: { scheduledStart: "asc" },
+      include: { request: { include: REQUEST_INCLUDE } },
+    });
 
-  return meetings.map((meeting) => ({
-    id: meeting.id,
-    requestId: meeting.requestId,
-    status: meeting.request.status,
-    scheduledStart: meeting.scheduledStart,
-    scheduledEnd: meeting.scheduledEnd,
-    mentee: publicPerson(menteeOf(meeting.request)),
-    mentor: publicPerson(mentorUserOf(meeting.request)),
-  }));
+    return meetings.map((meeting) => ({
+      id: meeting.id,
+      requestId: meeting.requestId,
+      status: meeting.request.status,
+      scheduledStart: meeting.scheduledStart,
+      scheduledEnd: meeting.scheduledEnd,
+      mentee: publicPerson(menteeOf(meeting.request)),
+      mentor: publicPerson(mentorUserOf(meeting.request)),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 async function listAlerts() {
+  try {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - WEEK_MS);
   const alerts = [];
@@ -331,18 +340,25 @@ async function listAlerts() {
   const severityOrder = { error: 0, warning: 1, success: 2 };
   alerts.sort((a, b) => (severityOrder[a.severity] ?? 9) - (severityOrder[b.severity] ?? 9));
   return alerts;
+  } catch {
+    return [];
+  }
 }
 
 async function listParticipants() {
-  const users = await prisma.user.findMany({
-    orderBy: { fullName: "asc" },
-    select: { id: true, fullName: true, email: true },
-  });
-  return users.map((user) => ({
-    id: user.id,
-    displayName: user.fullName,
-    email: user.email,
-  }));
+  try {
+    const users = await prisma.user.findMany({
+      orderBy: { fullName: "asc" },
+      select: { id: true, fullName: true, email: true },
+    });
+    return users.map((user) => ({
+      id: user.id,
+      displayName: user.fullName,
+      email: user.email,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 module.exports = {

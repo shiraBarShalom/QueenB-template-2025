@@ -186,6 +186,25 @@ const theme = createTheme({
             backgroundColor: "rgba(225, 29, 106, 0.06)",
           },
         },
+        startIcon: {
+          marginLeft: 0,
+          marginRight: 0,
+          marginInlineStart: -4,
+          marginInlineEnd: 8,
+        },
+        endIcon: {
+          marginLeft: 0,
+          marginRight: 0,
+          marginInlineStart: 8,
+          marginInlineEnd: -4,
+        },
+      },
+    },
+    MuiListItemIcon: {
+      styleOverrides: {
+        root: {
+          marginInlineEnd: 12,
+        },
       },
     },
     MuiTextField: {

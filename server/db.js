@@ -1,16 +1,19 @@
 const { Pool } = require("pg");
 require("dotenv").config();
 
-// Shared connection pool. Import this wherever you need to run a query:
-//   const db = require("../db");
-//   const result = await db.query("SELECT * FROM users WHERE id = $1", [id]);
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-});
+// Shared connection pool. Prefer DATABASE_URL (the role that already works
+// against mentor_me). Discrete DB_* vars are the fallback for local setups
+// that have not set DATABASE_URL.
+const connectionString = process.env.DATABASE_URL;
+const pool = connectionString
+  ? new Pool({ connectionString })
+  : new Pool({
+      host: process.env.DB_HOST || "localhost",
+      port: Number(process.env.DB_PORT || 5432),
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+    });
 
 pool.on("error", (err) => {
   console.error("Unexpected error on idle PostgreSQL client", err);

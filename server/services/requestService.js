@@ -13,6 +13,7 @@
 // ============================================================================
 
 const prisma = require("../prismaClient");
+const db = require("../db");
 const { ApiError } = require("../utils/prismaError");
 const { parseId } = require("./userService");
 const { createNotifications } = require("./notificationService");
@@ -126,16 +127,40 @@ async function getRequestById(rawId) {
   });
 }
 
+async function listRequestsByMenteeFromSql(menteeId) {
+  const result = await db.query(
+    `SELECT id, status, mentee_id, mentor_id
+     FROM mentoring_requests
+     WHERE mentee_id = $1
+     ORDER BY created_at DESC`,
+    [menteeId]
+  );
+  return result.rows.map((row) => ({
+    id: Number(row.id),
+    status: row.status,
+    menteeId: Number(row.mentee_id),
+    mentorProfile: {
+      userId: Number(row.mentor_id),
+      user: { id: Number(row.mentor_id) },
+    },
+  }));
+}
+
 async function listRequestsByMentee(rawUserId) {
   const menteeId = parseId(rawUserId, "userId");
-  const mentee = await prisma.user.findUnique({ where: { id: menteeId } });
-  if (!mentee) throw new ApiError(`User ${menteeId} not found`, 404);
+  try {
+    const mentee = await prisma.user.findUnique({ where: { id: menteeId } });
+    if (!mentee) throw new ApiError(`User ${menteeId} not found`, 404);
 
-  return prisma.mentoringRequest.findMany({
-    where: { menteeId },
-    orderBy: { createdAt: "desc" },
-    include: REQUEST_INCLUDE,
-  });
+    return await prisma.mentoringRequest.findMany({
+      where: { menteeId },
+      orderBy: { createdAt: "desc" },
+      include: REQUEST_INCLUDE,
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    return listRequestsByMenteeFromSql(menteeId);
+  }
 }
 
 async function listRequestsByMentorProfile(rawProfileId) {

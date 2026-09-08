@@ -15,3 +15,9 @@ export const listAlerts = () => api.get("/admin/alerts").then(data);
 export const listReport = (params) => api.get("/admin/report", { params }).then(data);
 export const getReport = (id) => api.get(`/admin/report/${id}`).then(data);
 export const listCalendar = () => api.get("/admin/calendar").then(data);
+export const listMentorApplications = () =>
+  api.get("/admin/mentor-applications").then(data);
+export const approveMentorApplication = (id) =>
+  api.post(`/admin/mentor-applications/${id}/approve`, {}).then(data);
+export const rejectMentorApplication = (id) =>
+  api.post(`/admin/mentor-applications/${id}/reject`, {}).then(data);

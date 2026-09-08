@@ -53,18 +53,23 @@ export function AuthProvider({ children }) {
   const signIn = async (payload) => {
     const nextUser = await authApi.login(payload);
     setUser(nextUser);
+    setSessionError("");
     return nextUser;
   };
 
   const signUp = async (payload) => {
     const nextUser = await authApi.register(payload);
     setUser(nextUser);
+    setSessionError("");
     return nextUser;
   };
 
   const signOut = async () => {
-    await authApi.logout();
-    setUser(null);
+    try {
+      await authApi.logout();
+    } finally {
+      setUser(null);
+    }
   };
 
   const value = useMemo(

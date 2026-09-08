@@ -1,29 +1,10 @@
-// ============================================================================
-// Authentication business logic.
-// ============================================================================
-// This is the PORT of feature/mentorme-login-page's server/services/usersService.js
-// onto this branch's Prisma data layer.
-//
-// What was kept from the incoming implementation:
-//   - register / authenticate / "safe user" shape and flow
-//   - constant-time-ish failure on unknown email (dummy verification) so login
-//     does not leak which emails exist
-//   - typed errors (UserExistsError / InvalidCredentialsError) the route maps
-//     to 409 / 401
-//
-// What was adapted:
-//   - raw `pg` queries against a bespoke users/user_profiles/user_roles schema
-//     -> Prisma `user` against THIS branch's schema.prisma (unchanged)
-//   - Argon2 -> the project's existing scrypt helpers in services/userService
-//     (verifyPassword there was explicitly "kept for the future auth step")
-//   - `roles` is DERIVED, not stored: a User is a MENTOR iff a MentorProfile
-//     row exists (schema.prisma states this rule), everyone is a MENTEE. No
-//     user_roles table, no schema change.
-// ============================================================================
+// Authentication against the live SQL `users` / `mentors` tables.
+// The Prisma `User` model from the pulled main branch is not present in this
+// database (the app role also cannot CREATE it), so register / login / me
+// read and write the existing product tables.
 
-const prisma = require("../prismaClient");
-const { Prisma } = require("@prisma/client");
-const { hashPassword, verifyPassword } = require("./userService");
+const db = require("../db");
+const { hashPassword, verifyPassword: verifyScrypt } = require("./userService");
 
 class UserExistsError extends Error {
   constructor(message = "An account with that email already exists") {
@@ -39,119 +20,106 @@ class InvalidCredentialsError extends Error {
   }
 }
 
-// A throwaway hash so authenticate() spends comparable CPU whether or not the
-// email exists (mirrors performDummyVerification on the incoming branch).
-const DUMMY_HASH = hashPassword("dummy-password-that-is-never-valid");
+const DUMMY_SCRYPT = hashPassword("dummy-password-that-is-never-valid");
 
 function performDummyVerification(password) {
   try {
-    verifyPassword(password, DUMMY_HASH);
+    verifyScrypt(password, DUMMY_SCRYPT);
   } catch {
     /* ignore — only here to equalize timing */
   }
 }
 
-// Prisma User -> the object the client's AuthContext / AuthPage / admin pages
-// consume. Never includes passwordHash.
-//
-// `profile` carries the editable account fields the Personal Area / "Become a
-// mentor" forms prefill from. `technologies` / `spokenLanguages` are returned as
-// plain name arrays (the shape the edit forms and mentor discovery already use).
-// The mentor-only sub-fields (background, meetingCapacity, meetingDurationMinutes,
-// mentoringTopics) are null for a mentee-only account.
-function toSafeUser(user) {
-  if (!user) return null;
-  const isMentor = Boolean(user.mentorProfile);
-  const names = (rows) => (rows || []).map((r) => r.name).filter(Boolean);
+async function verifyStoredPassword(password, stored) {
+  const hash = String(stored || "");
+  if (hash.startsWith("$argon2")) {
+    try {
+      const argon = require("../security/passwords");
+      return await argon.verifyPassword(password, hash);
+    } catch {
+      return false;
+    }
+  }
+  try {
+    return verifyScrypt(password, hash);
+  } catch {
+    return false;
+  }
+}
+
+function toSafeUser(row) {
+  if (!row) return null;
+  const isMentor = Boolean(row.mentor_user_id);
   return {
-    id: user.id,
-    email: user.email,
-    displayName: user.fullName,
-    fullName: user.fullName,
-    isAdmin: user.isAdmin,
-    isActive: user.isActive !== false,
-    onboardingComplete: Boolean(user.onboardingComplete),
+    id: Number(row.id),
+    email: row.email,
+    displayName: row.display_name,
+    fullName: row.display_name,
+    isAdmin: Boolean(row.is_admin),
+    isActive: row.is_active !== false,
+    onboardingComplete: Boolean(row.onboarding_complete),
     roles: ["MENTEE", ...(isMentor ? ["MENTOR"] : [])],
-    mentorProfileId: user.mentorProfile ? user.mentorProfile.id : null,
-    createdAt: user.createdAt,
-    technologies: names(user.technologies),
-    spokenLanguages: names(user.spokenLanguages),
+    mentorProfileId: isMentor ? Number(row.mentor_user_id) : null,
+    createdAt: row.created_at,
+    technologies: row.technology_stack || [],
+    spokenLanguages: [],
+    mentorProfile: isMentor
+      ? {
+          adviceTopics: row.advice_topics || [],
+          maxMeetings: row.max_meetings,
+          meetingDurationMinutes: row.meeting_duration_minutes,
+          acceptingRequests: row.accepting_requests !== false,
+        }
+      : null,
     profile: {
-      // `background` only exists for mentors (MentorProfile.background); null
-      // for a mentee-only account.
-      background: user.mentorProfile ? user.mentorProfile.background || null : null,
-      jobTitle: user.jobTitle || null,
-      company: user.workplace || null,
-      workplace: user.workplace || null,
-      yearsOfExperience: user.yearsOfExperience ?? null,
-      phoneNumber: user.phoneNumber || null,
-      githubUrl: user.githubUrl || null,
-      linkedinUrl: user.linkedinUrl || null,
-      profileImageUrl: user.profileImageUrl || null,
-      meetingCapacity: user.mentorProfile ? user.mentorProfile.meetingCapacity : null,
-      meetingDurationMinutes: user.mentorProfile
-        ? user.mentorProfile.meetingDurationMinutes
-        : null,
-      mentoringTopics: user.mentorProfile
-        ? names(user.mentorProfile.mentoringTopics)
-        : [],
+      background: row.self_description || null,
+      jobTitle: row.job_title || null,
+      company: row.company || null,
+      workplace: row.company || null,
+      yearsOfExperience: row.years_of_experience ?? null,
+      phoneNumber: null,
+      githubUrl: row.github_url || null,
+      linkedinUrl: row.linkedin_url || null,
+      profileImageUrl: null,
+      programmingLanguages: row.programming_languages || [],
+      techStack: row.technology_stack || [],
+      onboardingComplete: Boolean(row.onboarding_complete),
+      meetingCapacity: row.max_meetings ?? null,
+      meetingDurationMinutes: row.meeting_duration_minutes ?? null,
+      mentoringTopics: row.advice_topics || [],
     },
   };
 }
 
-const SAFE_SELECT = {
-  id: true,
-  email: true,
-  fullName: true,
-  jobTitle: true,
-  workplace: true,
-  yearsOfExperience: true,
-  phoneNumber: true,
-  githubUrl: true,
-  linkedinUrl: true,
-  profileImageUrl: true,
-  isAdmin: true,
-  isActive: true,
-  onboardingComplete: true,
-  createdAt: true,
-  technologies: { select: { name: true }, orderBy: { name: "asc" } },
-  spokenLanguages: { select: { name: true }, orderBy: { name: "asc" } },
-  mentorProfile: {
-    select: {
-      id: true,
-      background: true,
-      meetingCapacity: true,
-      meetingDurationMinutes: true,
-      mentoringTopics: { select: { name: true }, orderBy: { name: "asc" } },
-    },
-  },
-};
+const USER_SELECT = `
+  SELECT
+    u.id, u.email, u.display_name, u.is_admin, u.is_active, u.created_at,
+    u.self_description, u.job_title, u.company, u.years_of_experience,
+    u.linkedin_url, u.github_url, u.programming_languages, u.technology_stack,
+    u.onboarding_complete,
+    m.user_id AS mentor_user_id, m.advice_topics, m.max_meetings,
+    m.meeting_duration_minutes, m.accepting_requests
+  FROM users u
+  LEFT JOIN mentors m ON m.user_id = u.id
+`;
 
 async function getSafeUserById(id) {
-  const user = await prisma.user.findUnique({
-    where: { id: Number(id) },
-    select: SAFE_SELECT,
-  });
-  return toSafeUser(user);
+  const result = await db.query(`${USER_SELECT} WHERE u.id = $1`, [id]);
+  return toSafeUser(result.rows[0]);
 }
 
 async function registerUser({ displayName, email, password }) {
   const normalizedEmail = String(email).trim().toLowerCase();
   try {
-    const created = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        fullName: String(displayName).trim(),
-        passwordHash: hashPassword(password),
-      },
-      select: SAFE_SELECT,
-    });
-    return toSafeUser(created);
+    const created = await db.query(
+      `INSERT INTO users (email, display_name, password_hash)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [normalizedEmail, String(displayName).trim(), hashPassword(password)]
+    );
+    return getSafeUserById(created.rows[0].id);
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
+    if (error.code === "23505") {
       throw new UserExistsError();
     }
     throw error;
@@ -160,29 +128,87 @@ async function registerUser({ displayName, email, password }) {
 
 async function authenticateUser({ email, password }) {
   const normalizedEmail = String(email).trim().toLowerCase();
-  const record = await prisma.user.findUnique({
-    where: { email: normalizedEmail },
-    select: { id: true, passwordHash: true, isActive: true },
-  });
+  const result = await db.query(
+    `SELECT id, password_hash, is_active
+     FROM users
+     WHERE LOWER(email) = LOWER($1)`,
+    [normalizedEmail]
+  );
+  const record = result.rows[0];
 
-  // Same generic failure for "no such account" and "account disabled" — never
-  // leak which one it is. Both still burn a verify to keep timing even.
-  if (!record || record.isActive === false) {
+  if (!record || record.is_active === false) {
     performDummyVerification(password);
     throw new InvalidCredentialsError();
   }
 
-  let valid = false;
-  try {
-    valid = verifyPassword(password, record.passwordHash);
-  } catch {
-    valid = false;
-  }
+  const valid = await verifyStoredPassword(password, record.password_hash);
   if (!valid) {
     throw new InvalidCredentialsError();
   }
 
   return getSafeUserById(record.id);
+}
+
+async function updateAccount(userId, { displayName }) {
+  await db.query(
+    "UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1",
+    [userId, displayName]
+  );
+  return getSafeUserById(userId);
+}
+
+async function updateProfile(userId, updates) {
+  const columns = {
+    background: "self_description",
+    linkedinUrl: "linkedin_url",
+    githubUrl: "github_url",
+    jobTitle: "job_title",
+    company: "company",
+    yearsOfExperience: "years_of_experience",
+    programmingLanguages: "programming_languages",
+    techStack: "technology_stack",
+    onboardingComplete: "onboarding_complete",
+  };
+  const entries = Object.entries(updates).filter(([key]) => columns[key] !== undefined);
+  if (entries.length === 0) return getSafeUserById(userId);
+  const assignments = entries.map(([key], index) => `${columns[key]} = $${index + 2}`);
+  const values = entries.map(([, value]) => value);
+  await db.query(
+    `UPDATE users SET ${assignments.join(", ")}, updated_at = NOW() WHERE id = $1`,
+    [userId, ...values]
+  );
+  return getSafeUserById(userId);
+}
+
+async function updateRoles(userId) {
+  // Choosing "I want to mentor" only records intent. A mentors row is created
+  // later, after an administrator approves the application.
+  return getSafeUserById(userId);
+}
+
+async function updateMentorProfile(userId, updates) {
+  const existing = await db.query("SELECT user_id FROM mentors WHERE user_id = $1", [userId]);
+  if (existing.rowCount === 0) {
+    const error = new Error("You are not a mentor yet");
+    error.statusCode = 404;
+    throw error;
+  }
+  const columns = {
+    adviceTopics: "advice_topics",
+    maxMeetings: "max_meetings",
+    meetingDurationMinutes: "meeting_duration_minutes",
+    acceptingRequests: "accepting_requests",
+  };
+  const entries = Object.entries(updates).filter(([key]) => columns[key] !== undefined);
+  if (entries.length > 0) {
+    const assignments = entries.map(([key], index) => `${columns[key]} = $${index + 2}`);
+    const values = entries.map(([, value]) => value);
+    await db.query(
+      `UPDATE mentors SET ${assignments.join(", ")}, updated_at = NOW() WHERE user_id = $1`,
+      [userId, ...values]
+    );
+  }
+  return getSafeUserById(userId);
 }
 
 module.exports = {
@@ -192,4 +218,8 @@ module.exports = {
   authenticateUser,
   getSafeUserById,
   toSafeUser,
+  updateAccount,
+  updateProfile,
+  updateRoles,
+  updateMentorProfile,
 };

@@ -27,7 +27,16 @@ import AdminMeetingCalendar from "../components/admin/AdminMeetingCalendar";
 import MeetingStatusChip from "../components/admin/MeetingStatusChip";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../i18n/LanguageProvider";
-import { getStats, listAlerts, listCalendar, listReport, listUsers } from "../api/admin";
+import {
+  approveMentorApplication,
+  getStats,
+  listAlerts,
+  listCalendar,
+  listMentorApplications,
+  listReport,
+  listUsers,
+  rejectMentorApplication,
+} from "../api/admin";
 import { REPORT_STATUSES, formatDateTime } from "../admin/meetingStatus";
 
 function StatCard({ label, value }) {
@@ -58,10 +67,16 @@ export default function AdminPage() {
   const [participantFilter, setParticipantFilter] = useState("");
   const [alerts, setAlerts] = useState([]);
   const [calendar, setCalendar] = useState([]);
+  const [applications, setApplications] = useState([]);
+  const [decidingId, setDecidingId] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   const handleAdminError = (requestError) => {
+    if (!requestError) {
+      setError(admin.loadError);
+      return;
+    }
     if (requestError.response?.status === 401) {
       navigate("/login", { replace: true });
       return;
@@ -73,10 +88,15 @@ export default function AdminPage() {
     setError(requestError.response?.data?.message || admin.loadError);
   };
 
+  const loadApplications = () =>
+    listMentorApplications()
+      .then(setApplications)
+      .catch(() => setApplications([]));
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    Promise.all([
+    Promise.allSettled([
       getStats(),
       listUsers({ page: page + 1, limit, search: query }),
       listReport({
@@ -85,19 +105,30 @@ export default function AdminPage() {
       }),
       listAlerts(),
       listCalendar(),
+      listMentorApplications(),
     ])
-      .then(([nextStats, list, reportData, nextAlerts, nextCalendar]) => {
+      .then(([nextStats, list, reportData, nextAlerts, nextCalendar, nextApplications]) => {
         if (cancelled) return;
-        setStats(nextStats);
-        setUsers(list.users);
-        setTotal(list.total);
-        setReport(reportData.rows || []);
-        setParticipants(reportData.participants || []);
-        setAlerts(nextAlerts || []);
-        setCalendar(nextCalendar || []);
-        setError("");
+        if (nextStats.status === "fulfilled") setStats(nextStats.value);
+        if (list.status === "fulfilled") {
+          setUsers(list.value.users);
+          setTotal(list.value.total);
+        }
+        if (reportData.status === "fulfilled") {
+          setReport(reportData.value.rows || []);
+          setParticipants(reportData.value.participants || []);
+        }
+        if (nextAlerts.status === "fulfilled") setAlerts(nextAlerts.value || []);
+        if (nextCalendar.status === "fulfilled") setCalendar(nextCalendar.value || []);
+        if (nextApplications.status === "fulfilled") setApplications(nextApplications.value || []);
+        const failed = [nextStats, list].some((item) => item.status === "rejected");
+        if (failed) {
+          const firstError = [nextStats, list].find((item) => item.status === "rejected")?.reason;
+          handleAdminError(firstError);
+        } else {
+          setError("");
+        }
       })
-      .catch(handleAdminError)
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -106,6 +137,19 @@ export default function AdminPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit, query, statusFilter, participantFilter, navigate]);
+
+  const decide = async (id, action) => {
+    setDecidingId(id);
+    try {
+      if (action === "approve") await approveMentorApplication(id);
+      else await rejectMentorApplication(id);
+      await loadApplications();
+    } catch (requestError) {
+      handleAdminError(requestError);
+    } finally {
+      setDecidingId(null);
+    }
+  };
 
   return (
     <PageShell title={admin.welcome.replace("{name}", user.displayName)} maxWidth={1100}>
@@ -127,6 +171,7 @@ export default function AdminPage() {
           <Tab value="report" label={admin.report} />
           <Tab value="calendar" label={admin.calendar} />
           <Tab value="users" label={admin.users} />
+          <Tab value="mentorRequests" label={`${admin.mentorRequests} (${applications.length})`} />
         </Tabs>
 
         {tab === "alerts" && (
@@ -229,6 +274,51 @@ export default function AdminPage() {
         )}
 
         {tab === "calendar" && <AdminMeetingCalendar meetings={calendar} />}
+
+        {tab === "mentorRequests" && (
+          <Stack spacing={2}>
+            {applications.length === 0 && !loading && (
+              <Typography color="text.secondary">{admin.noMentorRequests}</Typography>
+            )}
+            {applications.map((application) => (
+              <Paper key={application.userId} sx={{ p: 2 }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1.5}
+                  justifyContent="space-between"
+                  alignItems={{ sm: "center" }}
+                >
+                  <Box>
+                    <Typography fontWeight={700}>{application.displayName}</Typography>
+                    <Typography color="text.secondary">{application.email}</Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      {admin.topics}: {(application.payload?.adviceTopics || []).join(", ") || "—"}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {admin.pendingSince}: {formatDateTime(application.updatedAt, locale, "")}
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant="contained"
+                      disabled={decidingId === application.userId}
+                      onClick={() => decide(application.userId, "approve")}
+                    >
+                      {admin.approve}
+                    </Button>
+                    <Button
+                      color="inherit"
+                      disabled={decidingId === application.userId}
+                      onClick={() => decide(application.userId, "reject")}
+                    >
+                      {admin.reject}
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
+        )}
 
         {tab === "users" && (
           <Stack spacing={2}>

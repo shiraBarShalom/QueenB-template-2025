@@ -102,7 +102,13 @@ export default function AppNav() {
       onClick={handleSignOut}
       disabled={signingOut}
       startIcon={<LogoutRoundedIcon fontSize="small" />}
-      sx={{ fontFamily: "var(--mq-font-body)", fontWeight: 600, color: "#6d3049" }}
+      sx={{
+        gap: 1,
+        fontFamily: "var(--mq-font-body)",
+        fontWeight: 600,
+        color: "#6d3049",
+        "& .MuiButton-startIcon": { margin: 0 },
+      }}
     >
       {nav.logout}
     </Button>

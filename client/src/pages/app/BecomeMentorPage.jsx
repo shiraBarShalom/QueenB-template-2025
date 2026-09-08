@@ -57,11 +57,8 @@ export default function BecomeMentorPage() {
             </Typography>
             <Typography sx={{ color: "#6d3049", lineHeight: 1.8 }}>{c.successBody}</Typography>
             <Stack direction="row" spacing={1.5}>
-              <Button component={RouterLink} to={ROUTES.APP_MENTOR_AREA} variant="contained">
-                {c.goToMentorArea}
-              </Button>
-              <Button component={RouterLink} to={ROUTES.APP_MENTOR_PROFILE_EDIT} variant="outlined">
-                {c.editCta}
+              <Button component={RouterLink} to={ROUTES.APP} variant="contained">
+                {c.pendingCta || c.goToMentorArea}
               </Button>
             </Stack>
           </Stack>

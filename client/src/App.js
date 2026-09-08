@@ -11,11 +11,17 @@ import theme from "./theme";
 import { ROUTES, mentorProfilePath } from "./constants/routes";
 import { LanguageProvider } from "./i18n/LanguageProvider";
 import { AuthProvider } from "./context/AuthContext";
-import { RequireAuth, RequireAdmin, GuestOnly } from "./components/RouteGuards";
+import {
+  RequireAuth,
+  RequireAdmin,
+  RequireOnboarding,
+  GuestOnly,
+} from "./components/RouteGuards";
 import LandingPage from "./pages/LandingPage";
 import AuthPage from "./pages/AuthPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import OnboardingPage from "./pages/OnboardingPage";
 import AppLayout from "./components/app/AppLayout";
 import MenteeHomePage from "./pages/app/MenteeHomePage";
 import MentorProfilePage from "./pages/MentorProfilePage";
@@ -74,6 +80,14 @@ function App() {
               }
             />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route
+              path={ROUTES.ONBOARDING}
+              element={
+                <RequireAuth>
+                  <OnboardingPage />
+                </RequireAuth>
+              }
+            />
 
             {/* Legacy discovery URLs → authenticated app routes */}
             <Route
@@ -131,7 +145,9 @@ function App() {
               path={ROUTES.APP}
               element={
                 <RequireAuth>
-                  <AppLayout />
+                  <RequireOnboarding>
+                    <AppLayout />
+                  </RequireOnboarding>
                 </RequireAuth>
               }
             >

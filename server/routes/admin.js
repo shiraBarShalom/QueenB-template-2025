@@ -26,6 +26,11 @@ const {
   userIdSchema,
   adminReportQuerySchema,
 } = require("../validation/admin");
+const {
+  MentorApplicationError,
+  listPending,
+  decideApplication,
+} = require("../services/mentorApplicationService");
 
 const router = express.Router();
 const mutationLimiter = rateLimit({
@@ -59,6 +64,47 @@ router.get(
 router.get(
   "/alerts",
   asyncHandler(async (req, res) => sendSuccess(res, await listAlerts()))
+);
+
+router.get(
+  "/mentor-applications",
+  asyncHandler(async (req, res) => sendSuccess(res, await listPending()))
+);
+
+router.post(
+  "/mentor-applications/:id/approve",
+  mutationLimiter,
+  asyncHandler(async (req, res) => {
+    const id = parseUserId(req, res);
+    if (!id) return undefined;
+    try {
+      const user = await decideApplication(id, "approved", req.session.user.id);
+      return sendSuccess(res, user, "Mentor application approved");
+    } catch (error) {
+      if (error instanceof MentorApplicationError) {
+        return sendError(res, error.message, error.statusCode);
+      }
+      throw error;
+    }
+  })
+);
+
+router.post(
+  "/mentor-applications/:id/reject",
+  mutationLimiter,
+  asyncHandler(async (req, res) => {
+    const id = parseUserId(req, res);
+    if (!id) return undefined;
+    try {
+      const user = await decideApplication(id, "rejected", req.session.user.id);
+      return sendSuccess(res, user, "Mentor application rejected");
+    } catch (error) {
+      if (error instanceof MentorApplicationError) {
+        return sendError(res, error.message, error.statusCode);
+      }
+      throw error;
+    }
+  })
 );
 
 router.get(

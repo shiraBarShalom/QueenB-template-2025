@@ -7,6 +7,7 @@
 // ============================================================================
 
 const prisma = require("../prismaClient");
+const db = require("../db");
 const { ApiError } = require("../utils/prismaError");
 const { parseId } = require("./userService");
 
@@ -131,11 +132,56 @@ async function createMentor(body = {}) {
   });
 }
 
+function mentorRowToProfile(row) {
+  const topics = row.advice_topics || [];
+  const tech = row.technology_stack || [];
+  return {
+    id: Number(row.user_id),
+    userId: Number(row.user_id),
+    background: row.self_description || "",
+    meetingCapacity: row.max_meetings,
+    meetingDurationMinutes: row.meeting_duration_minutes,
+    mentoringTopics: topics.map((name) => ({ name })),
+    user: {
+      id: Number(row.id),
+      fullName: row.display_name,
+      email: row.email,
+      jobTitle: row.job_title,
+      workplace: row.company,
+      yearsOfExperience: row.years_of_experience,
+      githubUrl: row.github_url,
+      linkedinUrl: row.linkedin_url,
+      profileImageUrl: null,
+      technologies: tech.map((name) => ({ name })),
+      spokenLanguages: [],
+    },
+  };
+}
+
+async function listMentorsFromSql() {
+  const result = await db.query(
+    `SELECT
+       u.id, u.email, u.display_name, u.job_title, u.company,
+       u.years_of_experience, u.github_url, u.linkedin_url,
+       u.self_description, u.technology_stack,
+       m.user_id, m.advice_topics, m.max_meetings, m.meeting_duration_minutes
+     FROM mentors m
+     JOIN users u ON u.id = m.user_id
+     WHERE COALESCE(m.accepting_requests, TRUE) = TRUE
+     ORDER BY u.display_name ASC`
+  );
+  return result.rows.map(mentorRowToProfile);
+}
+
 async function listMentors() {
-  return prisma.mentorProfile.findMany({
-    orderBy: { id: "asc" },
-    include: MENTOR_INCLUDE,
-  });
+  try {
+    return await prisma.mentorProfile.findMany({
+      orderBy: { id: "asc" },
+      include: MENTOR_INCLUDE,
+    });
+  } catch {
+    return listMentorsFromSql();
+  }
 }
 
 async function getMentorById(rawId) {

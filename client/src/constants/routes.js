@@ -13,6 +13,7 @@
 export const ROUTES = {
   HOME: "/",
   LOGIN: "/login",
+  ONBOARDING: "/onboarding",
 
   // Authenticated area
   APP: "/app", // Mentee home = mentor discovery — main page after login

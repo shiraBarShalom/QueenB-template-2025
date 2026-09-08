@@ -25,18 +25,29 @@ const {
   registerUser,
   authenticateUser,
   getSafeUserById,
+  updateAccount,
+  updateProfile,
+  updateRoles,
+  updateMentorProfile,
 } = require("../services/authService");
 const {
   registerSchema,
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  rolesSchema,
+  profileSchema,
+  mentorProfileSchema,
 } = require("../validation/authSchemas");
 const { validateBody } = require("../middleware/validate");
 const { requireAuth } = require("../middleware/auth");
 const { asyncHandler } = require("../middleware/asyncHandler");
 const { sendSuccess, sendError } = require("../utils/responseHandler");
 const { handleError } = require("../utils/prismaError");
+const {
+  MentorApplicationError,
+  submitApplication,
+} = require("../services/mentorApplicationService");
 const prisma = require("../prismaClient");
 const userService = require("../services/userService");
 const mentorService = require("../services/mentorService");
@@ -216,13 +227,17 @@ router.get(
 // /api/mentors CRUD from the browser. Additive — nothing else routes here.
 // ---------------------------------------------------------------------------
 
-// PATCH /api/users/me — the mentee edits her own account/profile fields.
 router.patch(
   "/me",
   requireAuth,
   asyncHandler(async (req, res) => {
     try {
-      await userService.updateUser(req.session.user.id, req.body);
+      const body = req.body || {};
+      if (body.displayName && Object.keys(body).length === 1) {
+        const user = await updateAccount(req.session.user.id, body);
+        return sendSuccess(res, user, "Account updated");
+      }
+      await userService.updateUser(req.session.user.id, body);
       const user = await getSafeUserById(req.session.user.id);
       return sendSuccess(res, user, "Profile updated");
     } catch (err) {
@@ -231,10 +246,45 @@ router.patch(
   })
 );
 
-// POST /api/users/me/mentor-profile — the signed-in user becomes a mentor.
-// Any profile fields (jobTitle / workplace / yearsOfExperience / links /
-// technologies / spokenLanguages) are persisted on the User first; the
-// MentorProfile-only fields go to mentorService.createMentor.
+router.put(
+  "/me/roles",
+  requireAuth,
+  validateBody(rolesSchema),
+  asyncHandler(async (req, res) => {
+    const user = await updateRoles(req.session.user.id, req.validatedBody.roles);
+    return sendSuccess(res, user, "Mentoring goals updated");
+  })
+);
+
+router.patch(
+  "/me/profile",
+  requireAuth,
+  validateBody(profileSchema),
+  asyncHandler(async (req, res) => {
+    const user = await updateProfile(req.session.user.id, req.validatedBody);
+    return sendSuccess(res, user, "Profile updated");
+  })
+);
+
+router.post(
+  "/me/mentor-application",
+  requireAuth,
+  validateBody(mentorProfileSchema),
+  asyncHandler(async (req, res) => {
+    try {
+      const user = await submitApplication(req.session.user.id, req.validatedBody);
+      return sendSuccess(res, user, "Mentor application submitted");
+    } catch (error) {
+      if (error instanceof MentorApplicationError) {
+        return sendError(res, error.message, error.statusCode);
+      }
+      throw error;
+    }
+  })
+);
+
+// POST /api/users/me/mentor-profile — submit a mentor application.
+// The user stays a mentee until an administrator approves the request.
 router.post(
   "/me/mentor-profile",
   requireAuth,
@@ -246,24 +296,36 @@ router.post(
         meetingCapacity,
         meetingDurationMinutes,
         mentoringTopics,
+        adviceTopics,
+        maxMeetings,
+        acceptingRequests,
         ...userFields
       } = req.body || {};
 
       if (Object.keys(userFields).length > 0) {
-        await userService.updateUser(userId, userFields);
+        try {
+          await userService.updateUser(userId, userFields);
+        } catch {
+          /* live DB may not have the Prisma User model */
+        }
+      }
+      if (background) {
+        await updateProfile(userId, { background });
       }
 
-      const mentor = await mentorService.createMentor({
-        userId,
+      const user = await submitApplication(userId, {
+        adviceTopics: mentoringTopics || adviceTopics || [],
+        maxMeetings: maxMeetings ?? meetingCapacity ?? null,
+        meetingDurationMinutes: meetingDurationMinutes ?? null,
+        acceptingRequests: acceptingRequests !== false,
         background,
-        meetingCapacity,
-        meetingDurationMinutes,
-        mentoringTopics,
       });
-      const user = await getSafeUserById(userId);
-      return sendSuccess(res, { mentor, user }, "Mentor profile created", 201);
-    } catch (err) {
-      return handleError(err, res);
+      return sendSuccess(res, { mentor: null, user }, "Mentor application submitted", 201);
+    } catch (error) {
+      if (error instanceof MentorApplicationError) {
+        return sendError(res, error.message, error.statusCode);
+      }
+      return handleError(error, res);
     }
   })
 );
@@ -293,6 +355,16 @@ router.patch(
   requireAuth,
   asyncHandler(async (req, res) => {
     const userId = req.session.user.id;
+    if (!prisma.mentorProfile) {
+      const parsed = mentorProfileSchema.safeParse(req.body || {});
+      if (!parsed.success) return sendError(res, "Invalid mentor profile", 400);
+      try {
+        const user = await updateMentorProfile(userId, parsed.data);
+        return sendSuccess(res, user, "Mentor profile updated");
+      } catch (error) {
+        return sendError(res, error.message, error.statusCode || 500);
+      }
+    }
     try {
       const profile = await prisma.mentorProfile.findUnique({ where: { userId } });
       if (!profile) return sendError(res, "You are not a mentor yet", 404);
