@@ -1,3 +1,8 @@
+:root {
+  --mq-font-body: "Heebo", "Segoe UI", sans-serif;
+  --mq-font-display: "Heebo", "Segoe UI", sans-serif;
+}
+
 html,
 body {
   max-width: 100%;
@@ -6,7 +11,7 @@ body {
 
 body {
   margin: 0;
-  font-family: "Nunito Sans", "Segoe UI", sans-serif;
+  font-family: var(--mq-font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -97,16 +102,5 @@ code {
   [class*="mq"] {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-  }
-  /* Non-essential MUI enter/leave animation (notification popover, dialogs,
-     snackbars, buttons). Keep it instant but functional for reduced-motion
-     users. */
-  .MuiBackdrop-root,
-  .MuiPopover-paper,
-  .MuiDialog-paper,
-  .MuiSnackbar-root .MuiPaper-root,
-  .MuiButtonBase-root {
-    transition-duration: 0.001ms !important;
-    animation-duration: 0.001ms !important;
   }
 }

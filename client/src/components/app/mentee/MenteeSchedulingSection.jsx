@@ -302,7 +302,12 @@ export default function MenteeSchedulingSection() {
                   />
                 ))}
                 {waiting.map((r) => (
-                  <MenteeRequestStatusCard key={r.id} request={r} />
+                  <MenteeRequestStatusCard
+                    key={r.id}
+                    request={r}
+                    disabled={submitting}
+                    onWithdraw={() => askWithdraw(r)}
+                  />
                 ))}
               </Stack>
             </Box>

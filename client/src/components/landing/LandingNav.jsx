@@ -4,49 +4,79 @@ import { Box, Button, IconButton, Stack } from "@mui/material";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 
+import { ROUTES } from "../../constants/routes";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import { useAuth } from "../../context/AuthContext";
 import MatchQueensLogo from "../MatchQueensLogo";
 import NavShell, { NavDrawer } from "../common/NavShell";
 import LanguageSwitcher from "../common/LanguageSwitcher";
+import LandingUserMenu from "./LandingUserMenu";
 
 /**
- * Public landing navbar. Built on the shared <NavShell> three-zone layout:
- *   startZone  = Match Queen logo   (RTL: far right, LTR: far left)
- *   centerZone = nav links          (centred)
- *   endZone    = language switcher + login  (opposite edge to the logo)
+ * Public landing navbar.
+ *
+ * TOP navigation only — the landing-page body below is untouched.
+ *   - logo  -> smooth-scrolls to the top of the same page
+ *   - "About us" / "How it works" -> smooth-scroll to the existing
+ *     #about / #how sections on THIS page (no separate routes)
+ *   - logged out -> language switcher + a "Log in" entry point
+ *   - logged in  -> language switcher + a personalized account menu
+ *     ("Hi, {name}" + Personal area / Mentor area / Become a mentor /
+ *      Admin dashboard / Log out), all role-filtered from useCurrentUser().
  */
-export default function LandingNav({ authRoute, onGoHome, onScrollTo }) {
+function scrollToId(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+const linkButtonSx = {
+  fontFamily: "var(--mq-font-body)",
+  fontWeight: 600,
+  fontSize: "1rem",
+  color: "#6d3049",
+  px: 1.5,
+  borderRadius: 999,
+  textTransform: "none",
+  "&:hover": { color: "#9f1239", backgroundColor: "rgba(225,29,106,0.07)" },
+};
+
+const loginButtonSx = {
+  px: 3,
+  py: 0.9,
+  fontFamily: "var(--mq-font-body)",
+  fontWeight: 800,
+  fontSize: "1rem",
+  letterSpacing: "0.02em",
+  color: "#fff",
+  borderRadius: 999,
+  background: "linear-gradient(180deg, #f472b6 0%, #e11d6a 100%)",
+  boxShadow: "0 12px 28px rgba(225,29,106,0.32)",
+  "&:hover": {
+    background: "linear-gradient(180deg, #f9a8d4 0%, #e11d6a 100%)",
+    boxShadow: "0 16px 34px rgba(225,29,106,0.38)",
+  },
+};
+
+export default function LandingNav() {
   const { dir, t } = useLanguage();
+  const { user } = useAuth();
   const nav = t.nav;
   const [open, setOpen] = useState(false);
+  const authed = Boolean(user);
 
-  const links = [
-    { label: nav.home, action: () => handle(onGoHome) },
-    { label: nav.how, action: () => handle(() => onScrollTo("how")) },
-    { label: nav.about, action: () => handle(() => onScrollTo("about")) },
-  ];
-
-  function handle(fn) {
-    setOpen(false);
-    fn?.();
-  }
-
-  const linkSx = {
-    fontFamily: "var(--mq-font-body)",
-    fontWeight: 600,
-    fontSize: "1rem",
-    color: "#6d3049",
-    px: 1.5,
-    borderRadius: 2,
-    "&:hover": { color: "#9f1239", backgroundColor: "rgba(225,29,106,0.07)" },
-    "&:focus-visible": { outline: "2px solid #e11d6a", outlineOffset: 2 },
+  const goHome = () => window.scrollTo({ top: 0, behavior: "smooth" });
+  const closeDrawer = () => setOpen(false);
+  const jumpTo = (id) => {
+    closeDrawer();
+    // let the drawer close before scrolling so the target isn't covered
+    setTimeout(() => scrollToId(id), 0);
   };
 
-  const logoButton = (
+  const logo = (
     <Box
       component="button"
       type="button"
-      onClick={onGoHome}
+      onClick={goHome}
       aria-label={nav.homeAria}
       sx={{
         border: 0,
@@ -60,97 +90,106 @@ export default function LandingNav({ authRoute, onGoHome, onScrollTo }) {
         "&:focus-visible": { outline: "2px solid #e11d6a", outlineOffset: 3 },
       }}
     >
-      <MatchQueensLogo size={32} />
+      <MatchQueensLogo size={30} />
     </Box>
   );
 
   const centerZone = (
     <Stack direction="row" spacing={0.5} alignItems="center">
-      {links.map((link) => (
-        <Button key={link.label} disableRipple onClick={link.action} sx={linkSx}>
-          {link.label}
-        </Button>
-      ))}
+      <Button disableRipple sx={linkButtonSx} onClick={() => scrollToId("about")}>
+        {nav.about}
+      </Button>
+      <Button disableRipple sx={linkButtonSx} onClick={() => scrollToId("how")}>
+        {nav.how}
+      </Button>
     </Stack>
   );
 
+  const language = <LanguageSwitcher variant="button" label={nav.language} />;
+  const languageIcon = <LanguageSwitcher variant="icon" label={nav.language} />;
+
+  const loginButton = (
+    <Button component={RouterLink} to={ROUTES.LOGIN} disableElevation sx={loginButtonSx}>
+      {nav.login}
+    </Button>
+  );
+
   const endZone = (
-    <Stack direction="row" spacing={1} alignItems="center">
-      <LanguageSwitcher variant="button" label={nav.language} />
-      <Button
-        component={RouterLink}
-        to={authRoute}
-        variant="contained"
-        disableElevation
-        sx={{
-          px: 3,
-          fontWeight: 700,
-          boxShadow: "0 10px 24px rgba(225,29,106,0.24)",
-        }}
-      >
-        {nav.login}
-      </Button>
+    <Stack direction="row" spacing={1.5} alignItems="center">
+      {language}
+      {authed ? <LandingUserMenu variant="desktop" /> : loginButton}
     </Stack>
   );
 
   const mobileStart = (
     <Stack direction="row" spacing={0.5} alignItems="center">
-      {logoButton}
-      <IconButton aria-label={nav.openMenu} onClick={() => setOpen(true)} sx={{ color: "#9f1239" }}>
+      {logo}
+      <IconButton
+        aria-label={nav.openMenu}
+        onClick={() => setOpen(true)}
+        sx={{ color: "#9f1239" }}
+      >
         <MenuRoundedIcon />
       </IconButton>
     </Stack>
   );
 
-  const mobileEnd = <LanguageSwitcher variant="icon" label={nav.language} />;
-
   const drawer = (
-    <NavDrawer open={open} onClose={() => setOpen(false)} dir={dir}>
-      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
-        <MatchQueensLogo size={27} />
-        <IconButton aria-label={nav.closeMenu} onClick={() => setOpen(false)}>
+    <NavDrawer open={open} onClose={closeDrawer} dir={dir}>
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          mb: 2,
+        }}
+      >
+        <MatchQueensLogo size={26} />
+        <IconButton aria-label={nav.closeMenu} onClick={closeDrawer}>
           <CloseRoundedIcon />
         </IconButton>
       </Box>
-      <Stack spacing={0.5}>
-        {links.map((link) => (
-          <Button
-            key={link.label}
-            onClick={link.action}
-            fullWidth
-            sx={{
-              justifyContent: "flex-start",
-              fontFamily: "var(--mq-font-body)",
-              fontWeight: 600,
-              fontSize: "1.05rem",
-              color: "#4a1528",
-              py: 1.2,
-            }}
-          >
-            {link.label}
-          </Button>
-        ))}
+
+      <Stack spacing={0.5} sx={{ mb: 2 }}>
+        <Button
+          onClick={() => jumpTo("about")}
+          fullWidth
+          sx={{ ...linkButtonSx, justifyContent: "flex-start", fontSize: "1.05rem", py: 1.2 }}
+        >
+          {nav.about}
+        </Button>
+        <Button
+          onClick={() => jumpTo("how")}
+          fullWidth
+          sx={{ ...linkButtonSx, justifyContent: "flex-start", fontSize: "1.05rem", py: 1.2 }}
+        >
+          {nav.how}
+        </Button>
+      </Stack>
+
+      {authed ? (
+        <LandingUserMenu variant="drawer" onNavigate={closeDrawer} />
+      ) : (
         <Button
           component={RouterLink}
-          to={authRoute}
-          variant="contained"
+          to={ROUTES.LOGIN}
+          onClick={closeDrawer}
           fullWidth
-          onClick={() => setOpen(false)}
-          sx={{ mt: 1.5, py: 1.2, fontWeight: 700 }}
+          sx={{ ...loginButtonSx, py: 1.1 }}
         >
           {nav.login}
         </Button>
-      </Stack>
+      )}
     </NavDrawer>
   );
 
   return (
     <NavShell
-      startZone={logoButton}
+      startZone={logo}
       centerZone={centerZone}
       endZone={endZone}
       mobileStart={mobileStart}
-      mobileEnd={mobileEnd}
+      mobileEnd={languageIcon}
       drawer={drawer}
     />
   );

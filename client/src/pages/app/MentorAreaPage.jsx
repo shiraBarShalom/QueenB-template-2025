@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { Alert, Box, Button, Snackbar, Stack, Typography } from "@mui/material";
 import ErrorOutlineRoundedIcon from "@mui/icons-material/ErrorOutlineRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+
+import { ROUTES } from "../../constants/routes";
 import MarkEmailReadRoundedIcon from "@mui/icons-material/MarkEmailReadRounded";
 import HourglassEmptyRoundedIcon from "@mui/icons-material/HourglassEmptyRounded";
 import EventAvailableRoundedIcon from "@mui/icons-material/EventAvailableRounded";
@@ -294,7 +297,22 @@ export default function MentorAreaPage() {
 
   return (
     <Box>
-      <PageHeader title={c.title} description={c.description} />
+      <PageHeader
+        title={c.title}
+        description={c.description}
+        action={
+          <Button
+            component={RouterLink}
+            to={ROUTES.APP_MENTOR_PROFILE_EDIT}
+            variant="outlined"
+            size="small"
+            startIcon={<EditRoundedIcon fontSize="small" />}
+            sx={{ fontWeight: 700, whiteSpace: "nowrap" }}
+          >
+            {t.app.nav.editMentorProfile}
+          </Button>
+        }
+      />
 
       <Stack spacing={{ xs: 2.5, md: 3 }}>
         <DashboardSummary

@@ -144,6 +144,7 @@ const theme = createTheme({
         body: {
           backgroundColor: colors.pink[50],
           color: colors.text.primary,
+          fontFamily: fonts.body,
         },
       },
     },

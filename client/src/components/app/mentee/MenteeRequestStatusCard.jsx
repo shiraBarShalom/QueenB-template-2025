@@ -1,5 +1,6 @@
 import React from "react";
-import { Box, Typography } from "@mui/material";
+import { Box, Button, Stack, Typography } from "@mui/material";
+import EventBusyRoundedIcon from "@mui/icons-material/EventBusyRounded";
 
 import { useLanguage } from "../../../i18n/LanguageProvider";
 import StatusChip from "../StatusChip";
@@ -16,6 +17,12 @@ import MentorHeader from "./MentorHeader";
  * projection (GET /api/mentees/:id/scheduling) — there is no local status here.
  * This is the status BANNER (Part 13): it stays visible whether or not the
  * matching notification has been read.
+ *
+ * When `onWithdraw` is supplied AND the request is still WAITING_FOR_MENTOR_SLOTS
+ * (mentor has not offered times yet), a "cancel request" button is shown. It
+ * routes through the SAME existing withdraw flow the parent already uses for
+ * WAITING_FOR_MENTEE_SELECTION requests (schedulingService.withdraw via
+ * POST /api/requests/:id/withdraw) — no new cancellation logic.
  */
 const CHIP_KEY = {
   WAITING_FOR_MENTOR_SLOTS: "pending",
@@ -23,9 +30,10 @@ const CHIP_KEY = {
   CANCELLED: "cancelled",
 };
 
-export default function MenteeRequestStatusCard({ request }) {
+export default function MenteeRequestStatusCard({ request, disabled = false, onWithdraw }) {
   const { t } = useLanguage();
   const s = t.app.personalArea.scheduling.statuses;
+  const proposedCopy = t.app.personalArea.scheduling.proposed;
 
   const afterReschedule =
     request.status === "WAITING_FOR_MENTOR_SLOTS" && Boolean(request.previousMeeting);
@@ -54,6 +62,21 @@ export default function MenteeRequestStatusCard({ request }) {
       <Typography sx={{ mt: 1.5, fontSize: "0.95rem", color: "#4a1528", lineHeight: 1.6 }}>
         {sentence}
       </Typography>
+
+      {onWithdraw && request.status === "WAITING_FOR_MENTOR_SLOTS" && (
+        <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.5 }}>
+          <Button
+            onClick={onWithdraw}
+            disabled={disabled}
+            variant="text"
+            color="error"
+            startIcon={<EventBusyRoundedIcon />}
+            sx={{ minHeight: 44, fontWeight: 700 }}
+          >
+            {proposedCopy.withdrawCta}
+          </Button>
+        </Stack>
+      )}
     </Box>
   );
 }

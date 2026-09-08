@@ -21,6 +21,9 @@ export const ROUTES = {
   // Entry point for Part 3 (mentor proposes 2–3 slots for one request).
   APP_MENTOR_PROPOSE_SLOTS: "/app/mentor-area/requests/:requestId/propose-slots",
   APP_BECOME_MENTOR: "/app/become-a-mentor",
+  // View / edit the signed-in mentor's own MentorProfile (reuses the same
+  // form as "Become a mentor", in edit mode).
+  APP_MENTOR_PROFILE_EDIT: "/app/mentor-profile",
 
   // Post-meeting feedback. A deliberately FOCUSED page: it renders OUTSIDE the
   // <AppLayout> nav shell (see App.js) so the user only sees the feedback task

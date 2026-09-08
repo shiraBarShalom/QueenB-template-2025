@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { NavLink, Link as RouterLink } from "react-router-dom";
+import { NavLink, Link as RouterLink, useNavigate } from "react-router-dom";
 import { Box, Button, IconButton, Stack } from "@mui/material";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
@@ -8,6 +8,7 @@ import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import { ROUTES } from "../../constants/routes";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { useCurrentUser } from "../../auth/useCurrentUser";
+import { useAuth } from "../../context/AuthContext";
 import MatchQueensLogo from "../MatchQueensLogo";
 import NavShell, { NavDrawer } from "../common/NavShell";
 import LanguageSwitcher from "../common/LanguageSwitcher";
@@ -31,18 +32,39 @@ import NotificationBell from "./notifications/NotificationBell";
  */
 export default function AppNav() {
   const { dir, t } = useLanguage();
-  const { isMentor } = useCurrentUser();
+  const { isMentor, isAdmin } = useCurrentUser();
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const nav = t.app.nav;
 
-  // TODO(role-redirect): the item list is the seam for role-aware nav.
+  // Real sign-out: destroy the server session, then drop back to the public
+  // landing page. AuthContext clears `user`, which flips useCurrentUser() to a
+  // guest and <RequireAuth> stops rendering the authenticated area.
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await signOut();
+    } catch {
+      /* even if the network call fails, fall through and leave the area */
+    } finally {
+      setSigningOut(false);
+      setOpen(false);
+      navigate(ROUTES.HOME, { replace: true });
+    }
+  };
+
+  // Role-aware nav. Every flag comes from the real useCurrentUser() seam.
   const items = [
     { key: "menteeHome", label: nav.menteeHome, to: ROUTES.APP, end: true },
     { key: "personalArea", label: nav.personalArea, to: ROUTES.APP_PERSONAL_AREA },
     isMentor
       ? { key: "mentorArea", label: nav.mentorArea, to: ROUTES.APP_MENTOR_AREA }
       : { key: "becomeMentor", label: nav.becomeMentor, to: ROUTES.APP_BECOME_MENTOR, cta: true },
-  ];
+    isAdmin && { key: "admin", label: nav.adminDashboard, to: "/admin", end: true },
+  ].filter(Boolean);
 
   const linkSx = ({ isActive }) => ({
     fontFamily: "var(--mq-font-body)",
@@ -77,8 +99,8 @@ export default function AppNav() {
 
   const logoutButton = (
     <Button
-      // TODO(auth): wire to real sign-out. Placeholder — no session yet.
-      disabled
+      onClick={handleSignOut}
+      disabled={signingOut}
       startIcon={<LogoutRoundedIcon fontSize="small" />}
       sx={{ fontFamily: "var(--mq-font-body)", fontWeight: 600, color: "#6d3049" }}
     >

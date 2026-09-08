@@ -141,12 +141,21 @@ model User {
   // owner whether/when this should actually be collected.
   phoneNumber       String?
   isAdmin           Boolean  @default(false)
+  // Admin account control (Part: admin dashboard). A disabled account cannot
+  // sign in and every existing session for it is revoked. Additive: existing
+  // rows default to active.
+  isActive          Boolean  @default(true)
+  // Whether the member has finished the profile onboarding steps. Additive
+  // boolean; drives the admin "onboarding" column / toggle. Stays false until
+  // an onboarding flow sets it.
+  onboardingComplete Boolean @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   technologies      Technology[]
   spokenLanguages   SpokenLanguage[]
   mentorProfile     MentorProfile?
+  passwordResetTokens PasswordResetToken[]
 
   // Requests this user filed as a MENTEE. The mentor side of a request is
   // reached through MentorProfile.user, not a second direct relation here -
@@ -160,6 +169,38 @@ model User {
   notifications               Notification[]
   // Meetings this user called off via CANNOT_ATTEND_MEETING (Part 15).
   meetingsCancelled           Meeting[]                    @relation("MeetingCancelledBy")
+
+  @@index([isActive])
+}
+
+// Session store for express-session via connect-pg-simple. NOT application
+// data and never queried by Prisma — modeled here only so `prisma migrate`
+// stops treating the runtime-created table as drift. The column shape MUST
+// match connect-pg-simple's own table.sql (sid / sess / expire).
+model session {
+  sid    String   @id
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire], map: "IDX_session_expire")
+}
+
+// One-time password reset tokens (admin "send reset email" action + the
+// self-service forgot/reset flow). Only the SHA-256 hash of the token is
+// stored; the raw token lives only in the emailed link. Rows are single-use
+// (usedAt) and expiring (expiresAt). Additive table — nothing else references it.
+model PasswordResetToken {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  requestedIp String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
 }
 
 // Programming languages and technologies (e.g. React, Python). Never spoken /
@@ -190,11 +231,15 @@ model MentorProfile {
   userId Int  @unique
   user   User @relation(fields: [userId], references: [id])
 
-  background             String
+  // NOT NULL, but with DB defaults so an admin can grant the MENTOR role from
+  // the dashboard (one checkbox) without collecting mentoring details up front;
+  // the mentor fills these in later. mentorService.createMentor still passes
+  // all three explicitly, so the normal "become a mentor" flow is unchanged.
+  background             String @default("")
   // Total number of meetings the mentor is willing to provide. No time
   // period (e.g. "per month") is assumed - not specified in requirements.
-  meetingCapacity        Int
-  meetingDurationMinutes Int
+  meetingCapacity        Int    @default(3)
+  meetingDurationMinutes Int    @default(60)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

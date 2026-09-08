@@ -2,17 +2,15 @@ import React from "react";
 import { Link as RouterLink } from "react-router-dom";
 import { ThemeProvider } from "@mui/material/styles";
 import { Box, Button, Container, Stack, Typography } from "@mui/material";
-import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
-import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 import PersonSearchRoundedIcon from "@mui/icons-material/PersonSearchRounded";
 import EventAvailableRoundedIcon from "@mui/icons-material/EventAvailableRounded";
 import Diversity3RoundedIcon from "@mui/icons-material/Diversity3Rounded";
 
 import { ROUTES } from "../constants/routes";
 import { useLanguage } from "../i18n/LanguageProvider";
-import MatchQueensLogo from "../components/MatchQueensLogo";
-import LandingNav from "../components/landing/LandingNav";
+import { useAuth } from "../context/AuthContext";
 import { NAV_HEIGHT } from "../components/common/NavShell";
+import LandingNav from "../components/landing/LandingNav";
 import HeroArt from "../components/landing/HeroArt";
 import Reveal from "../components/landing/Reveal";
 
@@ -20,27 +18,9 @@ const AUTH_ROUTE = ROUTES.LOGIN;
 
 // The wrapper sets --mq-font-body / --mq-font-display from the shared
 // language state; these consts just point at those CSS variables.
-const HEBREW_FONTS = "var(--mq-font-body)";
-const DISPLAY_FONTS = "var(--mq-font-display)";
-
 const STEP_ICONS = [PersonSearchRoundedIcon, EventAvailableRoundedIcon, Diversity3RoundedIcon];
 
-const scrollToId = (id) => {
-  const el = document.getElementById(id);
-  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-};
-
-const goToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
-
 const sectionAnchor = { scrollMarginTop: `${NAV_HEIGHT + 12}px` };
-
-const kickerSx = {
-  fontFamily: DISPLAY_FONTS,
-  fontWeight: 700,
-  fontSize: "0.85rem",
-  letterSpacing: "0.08em",
-  color: "#e11d6a",
-};
 
 const accentRule = (
   <Box
@@ -48,6 +28,25 @@ const accentRule = (
     sx={{ width: 56, height: 4, borderRadius: 999, background: "linear-gradient(90deg,#e11d6a,#f472b6)" }}
   />
 );
+
+const loginButtonSx = {
+  px: { xs: 5, md: 6.5 },
+  py: { xs: 1.4, md: 1.65 },
+  minWidth: { xs: 200, md: 240 },
+  fontFamily: "var(--mq-font-body)",
+  fontWeight: 800,
+  fontSize: { xs: "1.15rem", md: "1.28rem" },
+  letterSpacing: "0.03em",
+  color: "#fff",
+  borderRadius: 999,
+  background: "linear-gradient(180deg, #f472b6 0%, #e11d6a 100%)",
+  boxShadow: "0 16px 36px rgba(225,29,106,0.32)",
+  "&:hover": {
+    background: "linear-gradient(180deg, #f9a8d4 0%, #e11d6a 100%)",
+    boxShadow: "0 20px 44px rgba(225,29,106,0.38)",
+    transform: "translateY(-3px)",
+  },
+};
 
 function StepCard({ index, icon: Icon, title, text }) {
   return (
@@ -100,33 +99,16 @@ function StepCard({ index, icon: Icon, title, text }) {
   );
 }
 
-function Badge({ children }) {
-  return (
-    <Box
-      sx={{
-        px: 1.75,
-        py: 0.7,
-        borderRadius: 999,
-        fontFamily: HEBREW_FONTS,
-        fontWeight: 700,
-        fontSize: "0.85rem",
-        color: "#9f1239",
-        backgroundColor: "rgba(225,29,106,0.08)",
-        border: "1px solid rgba(225,29,106,0.16)",
-      }}
-    >
-      {children}
-    </Box>
-  );
-}
-
 export default function LandingPage() {
-  const year = new Date().getFullYear();
   // Language / direction / typography come from the shared LanguageProvider,
   // so the landing page and the authenticated area stay on one language.
   const { dir, t, fonts, theme } = useLanguage();
-  const isRtl = dir === "rtl";
-  const ArrowIcon = isRtl ? ArrowBackRoundedIcon : ArrowForwardRoundedIcon;
+  // A signed-in visitor no longer needs the big "log in / sign up" CTAs — the
+  // navbar carries her personalized menu. Swap them for a single "go to your
+  // area" entry point instead. The rest of the page is unchanged.
+  const { user } = useAuth();
+  const primaryCtaTo = user ? ROUTES.APP : AUTH_ROUTE;
+  const primaryCtaLabel = user ? t.nav.goToApp : t.nav.login;
 
   const steps = t.how.steps.map((s, i) => ({ ...s, icon: STEP_ICONS[i] }));
 
@@ -144,8 +126,7 @@ export default function LandingPage() {
           overflowX: "hidden",
         }}
       >
-        <LandingNav authRoute={AUTH_ROUTE} onGoHome={goToTop} onScrollTo={scrollToId} />
-
+        <LandingNav />
         {/* ---------------- HERO ---------------- */}
         <Box
           component="section"
@@ -197,30 +178,6 @@ export default function LandingPage() {
               }}
             >
               <Box sx={{ minWidth: 0, animation: "mentorMeFadeUp 700ms ease-out both" }}>
-                <Box
-                  sx={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 1,
-                    px: 1.75,
-                    py: 0.7,
-                    mb: 2.5,
-                    borderRadius: 999,
-                    backgroundColor: "rgba(225,29,106,0.08)",
-                    border: "1px solid rgba(225,29,106,0.16)",
-                  }}
-                >
-                  <Box component="span" sx={{ color: "#c9a24b", fontSize: "0.9rem" }}>
-                    ✦
-                  </Box>
-                  <Box
-                    component="span"
-                    sx={{ fontFamily: HEBREW_FONTS, fontWeight: 700, fontSize: "0.85rem", color: "#9f1239" }}
-                  >
-                    {t.hero.eyebrow}
-                  </Box>
-                </Box>
-
                 <Typography
                   id="hero-title"
                   variant="h1"
@@ -249,26 +206,24 @@ export default function LandingPage() {
                   {t.hero.subtitle}
                 </Typography>
 
-                <Stack direction="row" spacing={1.5} sx={{ mt: 4, flexWrap: "wrap", gap: 1.5 }}>
+                <Box
+                  sx={{
+                    mt: { xs: 5.5, md: 7 },
+                    width: "100%",
+                    maxWidth: 520,
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
                   <Button
                     component={RouterLink}
-                    to={AUTH_ROUTE}
-                    variant="contained"
-                    size="large"
-                    endIcon={<ArrowIcon />}
-                    sx={{ px: 3.5, py: 1.25, fontWeight: 800, boxShadow: "0 14px 30px rgba(225,29,106,0.28)" }}
+                    to={primaryCtaTo}
+                    disableElevation
+                    sx={loginButtonSx}
                   >
-                    {t.hero.ctaPrimary}
+                    {primaryCtaLabel}
                   </Button>
-                  <Button
-                    variant="outlined"
-                    size="large"
-                    onClick={() => scrollToId("how")}
-                    sx={{ px: 3.5, py: 1.25, fontWeight: 700 }}
-                  >
-                    {t.hero.ctaSecondary}
-                  </Button>
-                </Stack>
+                </Box>
               </Box>
 
               <Box
@@ -280,6 +235,54 @@ export default function LandingPage() {
               >
                 <HeroArt labels={t.art} />
               </Box>
+            </Box>
+          </Container>
+        </Box>
+
+        {/* ---------------- ABOUT ---------------- */}
+        <Box
+          component="section"
+          id="about"
+          aria-labelledby="about-title"
+          sx={{ ...sectionAnchor, py: { xs: 7, md: 11 }, backgroundColor: "#fffdfb" }}
+        >
+          <Container maxWidth="lg">
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: { xs: "1fr", md: "1fr 0.8fr" },
+                gap: { xs: 5, md: 8 },
+                alignItems: "center",
+              }}
+            >
+              <Reveal sx={{ minWidth: 0 }}>
+                <Stack spacing={1.5} alignItems="flex-start">
+                  <Typography id="about-title" variant="h2" sx={{ fontSize: { xs: "1.8rem", md: "2.4rem" } }}>
+                    {t.about.title}
+                  </Typography>
+                  {accentRule}
+                  <Typography
+                    sx={{ mt: 2, maxWidth: 560, fontSize: "1.08rem", lineHeight: 1.85, color: "#6d3049" }}
+                  >
+                    {t.about.text}
+                  </Typography>
+                </Stack>
+              </Reveal>
+
+              <Reveal delay={120}>
+                <Box
+                  component="img"
+                  src="/landing/queenb-about.png"
+                  alt={t.about.title}
+                  sx={{
+                    width: "100%",
+                    height: "auto",
+                    display: "block",
+                    borderRadius: 4,
+                    objectFit: "contain",
+                  }}
+                />
+              </Reveal>
             </Box>
           </Container>
         </Box>
@@ -298,14 +301,10 @@ export default function LandingPage() {
           <Container maxWidth="lg">
             <Reveal>
               <Stack spacing={1.5} alignItems="center" sx={{ textAlign: "center" }}>
-                <Box sx={kickerSx}>{t.how.kicker}</Box>
                 <Typography id="how-title" variant="h2" sx={{ fontSize: { xs: "1.8rem", md: "2.4rem" } }}>
                   {t.how.title}
                 </Typography>
                 {accentRule}
-                <Typography sx={{ mt: 1, maxWidth: 520, color: "#6d3049", lineHeight: 1.75 }}>
-                  {t.how.subtitle}
-                </Typography>
               </Stack>
             </Reveal>
 
@@ -339,162 +338,59 @@ export default function LandingPage() {
           </Container>
         </Box>
 
-        {/* ---------------- ABOUT ---------------- */}
         <Box
           component="section"
-          id="about"
-          aria-labelledby="about-title"
-          sx={{ ...sectionAnchor, py: { xs: 7, md: 11 }, backgroundColor: "#fffdfb" }}
+          sx={{
+            position: "relative",
+            overflow: "hidden",
+            width: "100%",
+            py: { xs: 6, md: 8 },
+            px: 2,
+            textAlign: "center",
+            backgroundColor: "#e11d6a",
+            backgroundImage:
+              "radial-gradient(circle at 28% 18%, rgba(255,255,255,0.22), transparent 55%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.14) 1px, transparent 0)",
+            backgroundSize: "auto, 22px 22px",
+          }}
         >
-          <Container maxWidth="lg">
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: { xs: "1fr", md: "1fr 0.8fr" },
-                gap: { xs: 5, md: 8 },
-                alignItems: "center",
-              }}
-            >
-              <Reveal sx={{ minWidth: 0 }}>
-                <Stack spacing={1.5} alignItems="flex-start">
-                  <Box sx={kickerSx}>{t.about.kicker}</Box>
-                  <Typography id="about-title" variant="h2" sx={{ fontSize: { xs: "1.8rem", md: "2.4rem" } }}>
-                    {t.about.title}
-                  </Typography>
-                  {accentRule}
-                  <Typography
-                    sx={{ mt: 2, maxWidth: 560, fontSize: "1.08rem", lineHeight: 1.85, color: "#6d3049" }}
-                  >
-                    {t.about.text}
-                  </Typography>
-                  <Stack direction="row" spacing={1.25} sx={{ mt: 2, flexWrap: "wrap", gap: 1.25 }}>
-                    {t.about.badges.map((b) => (
-                      <Badge key={b}>{b}</Badge>
-                    ))}
-                  </Stack>
-                </Stack>
-              </Reveal>
-
-              <Reveal delay={120}>
-                <Box
-                  aria-hidden="true"
-                  sx={{
-                    fontFamily: '"Fira Code", ui-monospace, monospace',
-                    textAlign: "center",
-                    p: { xs: 3, md: 4 },
-                    borderRadius: 4,
-                    border: "1px dashed rgba(225,29,106,0.3)",
-                    backgroundColor: "rgba(255,241,245,0.55)",
-                  }}
-                >
-                  <Box sx={{ fontSize: "3rem", color: "#f472b6", lineHeight: 1 }}>{"{"}</Box>
-                  <Box sx={{ fontFamily: HEBREW_FONTS, fontWeight: 700, color: "#6d3049", my: 1 }}>
-                    {t.about.braceLine1}
-                  </Box>
-                  <Box sx={{ fontSize: "1.5rem", color: "#e11d6a", my: 0.5 }}>×</Box>
-                  <Box sx={{ fontFamily: HEBREW_FONTS, fontWeight: 700, color: "#6d3049", my: 1 }}>
-                    {t.about.braceLine2}
-                  </Box>
-                  <Box sx={{ fontSize: "3rem", color: "#f472b6", lineHeight: 1 }}>{"}"}</Box>
-                </Box>
-              </Reveal>
-            </Box>
-          </Container>
-        </Box>
-
-        {/* ---------------- FINAL CTA ---------------- */}
-        <Box component="section" sx={{ py: { xs: 6, md: 10 }, backgroundColor: "#fffdfb" }}>
-          <Container maxWidth="md">
+          <Container maxWidth="md" sx={{ position: "relative" }}>
             <Reveal>
-              <Box
-                sx={{
-                  position: "relative",
-                  overflow: "hidden",
-                  textAlign: "center",
-                  borderRadius: "28px",
-                  px: { xs: 4, md: 7 },
-                  py: { xs: 5, md: 7 },
-                  backgroundColor: "#e11d6a",
-                  boxShadow: "0 30px 70px rgba(159,18,57,0.3)",
-                  "&::before": {
-                    content: '""',
-                    position: "absolute",
-                    inset: 0,
-                    background:
-                      "radial-gradient(circle at 28% 18%, rgba(255,255,255,0.22), transparent 55%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.09) 1px, transparent 0)",
-                    backgroundSize: "auto, 22px 22px",
-                    pointerEvents: "none",
-                  },
-                }}
-              >
+              <Stack spacing={1.5} alignItems="center">
                 <Typography
                   variant="h2"
-                  sx={{ position: "relative", color: "#fff", fontSize: { xs: "1.6rem", md: "2.1rem" } }}
+                  sx={{ color: "#fff", fontSize: { xs: "1.6rem", md: "2.1rem" } }}
                 >
                   {t.cta.title}
                 </Typography>
-                <Typography
-                  sx={{
-                    position: "relative",
-                    mt: 1.5,
-                    color: "rgba(255,255,255,0.92)",
-                    fontSize: "1.05rem",
-                  }}
-                >
+                <Typography sx={{ color: "rgba(255,255,255,0.92)", fontSize: "1.05rem" }}>
                   {t.cta.text}
                 </Typography>
                 <Button
                   component={RouterLink}
-                  to={AUTH_ROUTE}
-                  size="large"
+                  to={primaryCtaTo}
+                  disableElevation
                   sx={{
-                    position: "relative",
-                    mt: 3.5,
+                    mt: 1.5,
                     px: 4.5,
-                    py: 1.3,
+                    py: 1.2,
+                    minWidth: 148,
+                    fontFamily: "var(--mq-font-body)",
                     fontWeight: 800,
-                    backgroundColor: "#fff",
+                    fontSize: "1.02rem",
                     color: "#9f1239",
-                    "&:hover": { backgroundColor: "#fff1f5" },
+                    borderRadius: 999,
+                    backgroundColor: "#fff",
+                    boxShadow: "0 10px 24px rgba(80, 10, 40, 0.18)",
+                    "&:hover": {
+                      backgroundColor: "#fff1f5",
+                      transform: "translateY(-2px)",
+                    },
                   }}
                 >
-                  {t.cta.button}
+                  {user ? t.nav.goToApp : t.cta.button}
                 </Button>
-              </Box>
-            </Reveal>
-          </Container>
-        </Box>
-
-        {/* ---------------- FOOTER ---------------- */}
-        <Box
-          component="footer"
-          sx={{
-            borderTop: "1px solid rgba(225,29,106,0.12)",
-            backgroundColor: "#fffdfb",
-            py: 4,
-          }}
-        >
-          <Container maxWidth="lg">
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: { xs: "column", sm: "row" },
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 2,
-              }}
-            >
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <MatchQueensLogo size={18} />
-                <Box aria-hidden="true" sx={{ width: 4, height: 4, borderRadius: "50%", backgroundColor: "#f9a8d4" }} />
-                <Typography sx={{ fontSize: "0.9rem", color: "#6d3049" }}>{t.footer.tagline}</Typography>
               </Stack>
-              <Typography
-                sx={{ fontFamily: '"Fira Code", monospace', fontSize: "0.82rem", color: "#b05a75" }}
-              >
-                © {year} Match Queens
-              </Typography>
-            </Box>
+            </Reveal>
           </Container>
         </Box>
       </Box>

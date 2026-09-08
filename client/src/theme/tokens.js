@@ -37,8 +37,8 @@ export const colors = {
 };
 
 export const fonts = {
-  display: '"Fraunces", Georgia, serif',
-  body: '"Nunito Sans", "Segoe UI", sans-serif',
+  display: 'var(--mq-font-display), "Heebo", "Segoe UI", sans-serif',
+  body: 'var(--mq-font-body), "Heebo", "Segoe UI", sans-serif',
 };
 
 export const radii = {

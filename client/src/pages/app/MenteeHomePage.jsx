@@ -23,6 +23,7 @@ import { useCurrentUser } from "../../auth/useCurrentUser";
 import { mentorProfilePath } from "../../constants/routes";
 import PageHeader from "../../components/app/PageHeader";
 import StatusChip from "../../components/app/StatusChip";
+import { splitTags, sameTag, uniqueTags } from "../../utils/tags";
 import {
   buildOpenRequestByMentorUserId,
   openRequestUiKind,
@@ -38,9 +39,6 @@ import {
  * Filters use existing list fields plus spokenLanguages (human languages).
  * techStack stays programming languages/technologies — never mixed with spoken.
  */
-
-/** Canonical spoken-language catalog for the MVP filter (matches seed/API names). */
-const SPOKEN_LANGUAGE_OPTIONS = ["Hebrew", "Arabic", "English"];
 
 const EXPERIENCE_OPTIONS = [1, 3, 5, 8, 10];
 
@@ -60,19 +58,20 @@ function fill(template, vars) {
   );
 }
 
-function splitCsv(value) {
-  return (value || "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
+// Plain-string field de-dupe (company) — kept exact, only tags are fuzzy.
 function uniqueSorted(values) {
   return [...new Set(values.filter(Boolean))].sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: "base" })
   );
 }
 
+/**
+ * A mentor matches when EVERY active facet matches (cross-facet AND — unchanged;
+ * each facet is a single-value dropdown so there is no within-facet OR/AND).
+ * Free-text search stays a partial, case-insensitive substring match.
+ * Structured tag facets (technology / topic / spoken language) match a single
+ * NORMALIZED value case-insensitively — so "Java" never matches "JavaScript".
+ */
 function matchesMentor(mentor, filters) {
   const search = filters.search.trim().toLowerCase();
   if (search) {
@@ -86,13 +85,13 @@ function matchesMentor(mentor, filters) {
   if (filters.company && mentor.company !== filters.company) return false;
 
   if (filters.technology) {
-    const techs = splitCsv(mentor.techStack);
-    if (!techs.includes(filters.technology)) return false;
+    const techs = splitTags(mentor.techStack);
+    if (!techs.some((tag) => sameTag(tag, filters.technology))) return false;
   }
 
   if (filters.topic) {
-    const topics = splitCsv(mentor.adviceTopics);
-    if (!topics.includes(filters.topic)) return false;
+    const topics = splitTags(mentor.adviceTopics);
+    if (!topics.some((tag) => sameTag(tag, filters.topic))) return false;
   }
 
   if (filters.minExperience !== "") {
@@ -106,8 +105,8 @@ function matchesMentor(mentor, filters) {
   }
 
   if (filters.spokenLanguage) {
-    const spoken = mentor.spokenLanguages || [];
-    if (!spoken.includes(filters.spokenLanguage)) return false;
+    const spoken = splitTags(mentor.spokenLanguages || []);
+    if (!spoken.some((tag) => sameTag(tag, filters.spokenLanguage))) return false;
   }
 
   return true;
@@ -121,7 +120,7 @@ function MentorCard({ mentor, copy, openRequest }) {
     .slice(0, 2)
     .toUpperCase();
 
-  const topics = splitCsv(mentor.adviceTopics).slice(0, 3);
+  const topics = splitTags(mentor.adviceTopics).slice(0, 3);
 
   const experienceText =
     mentor.yearsOfExperience != null
@@ -320,13 +319,21 @@ export default function MenteeHomePage() {
     [mentors]
   );
 
+  // Filter options are DERIVED from the mentors currently returned by
+  // GET /api/mentors — never hardcoded — so a value a brand-new mentor just
+  // added is immediately filterable. Normalized + de-duped case-insensitively.
   const technologyOptions = useMemo(
-    () => uniqueSorted(mentors.flatMap((m) => splitCsv(m.techStack))),
+    () => uniqueTags(mentors.flatMap((m) => splitTags(m.techStack))),
     [mentors]
   );
 
   const topicOptions = useMemo(
-    () => uniqueSorted(mentors.flatMap((m) => splitCsv(m.adviceTopics))),
+    () => uniqueTags(mentors.flatMap((m) => splitTags(m.adviceTopics))),
+    [mentors]
+  );
+
+  const spokenLanguageOptions = useMemo(
+    () => uniqueTags(mentors.flatMap((m) => m.spokenLanguages || [])),
     [mentors]
   );
 
@@ -497,7 +504,7 @@ export default function MenteeHomePage() {
                   }
                 >
                   <MenuItem value="">{filterCopy.spokenLanguageAny}</MenuItem>
-                  {SPOKEN_LANGUAGE_OPTIONS.map((lang) => (
+                  {spokenLanguageOptions.map((lang) => (
                     <MenuItem key={lang} value={lang}>
                       {spokenLabel(lang)}
                     </MenuItem>

@@ -1,89 +1,76 @@
 /**
- * Placeholder current-user / role hook — the single integration seam for
- * real authentication.
+ * Current-user / role hook — the single identity seam for the authenticated
+ * app ("/app/..." and the standalone post-meeting feedback page).
  *
- * RIGHT NOW: returns a hardcoded object chosen by a DEVELOPMENT-ONLY persona
- * switch. There is no session, no API call, no token handling anywhere yet.
+ * It now reads the REAL logged-in user from AuthContext (session-backed,
+ * hydrated from GET /api/users/me). The old development-only persona switch
+ * (DEMO_PERSONAS + localStorage "mq.demoPersona") has been removed — identity
+ * comes from the session, not a hardcoded object.
  *
- * LATER: implement real auth *inside this hook* (e.g. read from an AuthContext,
- * call /api/users/me, decode a token). Every consumer (AppNav, MentorAreaPage,
- * PersonalAreaPage, the future <RequireAuth>) reads the shape below and keeps
- * working unchanged.
+ * The RETURN SHAPE is unchanged, so every consumer keeps working without edits:
+ *   AppNav, NotificationBell, MenteeSchedulingSection, MenteeHomePage,
+ *   MentorProfilePage, MentorAreaPage, ProposeSlotsPage, MeetingFeedbackPage.
  *
- * ─────────────────────────────────────────────────────────────────────────────
- * DEV PERSONA SWITCH (temporary scaffolding — delete when real auth lands)
- * ─────────────────────────────────────────────────────────────────────────────
- * Personas (localStorage key mq.demoPersona):
+ *   {
+ *     isAuthenticated,   // boolean — a session exists
+ *     isMentee,          // boolean — every authenticated user may act as a mentee
+ *     isMentor,          // boolean — a MentorProfile exists for this user
+ *     isAdmin,           // boolean — user.isAdmin
+ *     displayName,       // string | null
+ *     id,                // number | null — users.id; sent as actingUserId /
+ *                        //   menteeId and validated server-side against the
+ *                        //   request's mentor/mentee
+ *     mentorProfileId,   // number | null — reads the mentor dashboard
+ *     loading,           // boolean — the /api/users/me check is still in flight
+ *   }
  *
- *   "mentor"  -> Maya Ben-David   user 9001 / MentorProfile 9101
- *                from seed-scheduling-demo.js (fixed ids). Rich Mentor Area.
+ * Role resolution follows the data model (see server/prisma/schema.prisma):
+ *   - user.isAdmin              -> admin
+ *   - a MentorProfile exists    -> mentor  (roles includes "MENTOR", or
+ *                                           mentorProfileId is set)
+ *   - otherwise                 -> mentee-only
+ * A user who is BOTH keeps isMentor AND isMentee true, so both areas stay
+ * reachable rather than forcing one exclusive role.
  *
- *   "mentee"  -> Efrat Dahan      user 9012 (no MentorProfile)
- *                from seed-scheduling-demo.js. Personal Area scheduling demo.
- *
- *   "dana"    -> Dana Levi        user 2 / MentorProfile 1
- *                from prisma/seed.js (auto-increment ids on this machine).
- *                Mentor Area for the discovery-seed mentor (e.g. Shira's request).
- *
- * Switch persona either way:
- *   • edit DEFAULT_PERSONA below (needs a rebuild / dev-server reload), or
- *   • in the browser console:  localStorage.setItem("mq.demoPersona", "dana")
- *     then reload  (no rebuild; clear with localStorage.removeItem).
- *
- * `id` is the current users.id — scheduling actions send it as `actingUserId`
- * and the backend validates it against the request's mentor/mentee.
- * `mentorProfileId` (mentor personas) just READS the mentor dashboard.
+ * Routes under "/app" are wrapped in <RequireAuth> (see App.js), so consumers
+ * only mount once `loading` is false and `user` is known; `id` is therefore a
+ * real number by the time these screens render.
  */
 
-const DEFAULT_PERSONA = "mentor"; // "mentor" | "mentee" | "dana"
-const PERSONA_STORAGE_KEY = "mq.demoPersona";
+import { useAuth } from "../context/AuthContext";
 
-export const DEMO_PERSONAS = {
-  mentor: {
-    isAuthenticated: true,
-    isMentee: true,
-    isMentor: true,
-    isAdmin: false,
-    displayName: "Maya",
-    id: 9011,
-    mentorProfileId: 9101,
-  },
-  mentee: {
-    isAuthenticated: true,
-    isMentee: true,
-    isMentor: false,
-    isAdmin: false,
-    displayName: "Efrat",
-    id: 9012,
-    mentorProfileId: null,
-  },
-  dana: {
-    isAuthenticated: true,
-    isMentee: true,
-    isMentor: true,
-    isAdmin: false,
-    displayName: "Dana",
-    id: 2,
-    mentorProfileId: 1,
-  },
-};
-
-function resolvePersonaKey() {
-  try {
-    const stored = window.localStorage.getItem(PERSONA_STORAGE_KEY);
-    if (stored && DEMO_PERSONAS[stored]) return stored;
-  } catch {
-    /* localStorage unavailable — fall back to the default */
-  }
-  return DEMO_PERSONAS[DEFAULT_PERSONA] ? DEFAULT_PERSONA : "mentor";
-}
-
-// Kept as a named export for backwards compatibility with earlier imports.
-export const PLACEHOLDER_USER = DEMO_PERSONAS[DEFAULT_PERSONA];
+const GUEST = Object.freeze({
+  isAuthenticated: false,
+  isMentee: false,
+  isMentor: false,
+  isAdmin: false,
+  displayName: null,
+  id: null,
+  mentorProfileId: null,
+  loading: false,
+});
 
 export function useCurrentUser() {
-  // TODO(auth): replace with real session/role data. Keep the return shape.
-  return DEMO_PERSONAS[resolvePersonaKey()];
+  const { user, loading } = useAuth();
+
+  if (!user) {
+    return loading ? { ...GUEST, loading: true } : GUEST;
+  }
+
+  const isMentor = Array.isArray(user.roles)
+    ? user.roles.includes("MENTOR")
+    : Boolean(user.mentorProfileId);
+
+  return {
+    isAuthenticated: true,
+    isMentee: true,
+    isMentor,
+    isAdmin: Boolean(user.isAdmin),
+    displayName: user.displayName || user.fullName || null,
+    id: user.id,
+    mentorProfileId: user.mentorProfileId ?? null,
+    loading,
+  };
 }
 
 export default useCurrentUser;
